@@ -51,8 +51,12 @@ struct Step {
 struct Game {
   std::vector<Tile> tiles;
   Board board;
+  unsigned int tick;
+  unsigned int total_player;
+  unsigned int current_player;
 
-  explicit Game(unsigned int width, unsigned int height, unsigned int players);
+  explicit Game(unsigned int width, unsigned int height,
+                unsigned int player_count);
   Game(const Game &);
   PlayerBoard player_view(Player player) const;
   Game apply(const Step &step) const;

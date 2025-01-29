@@ -50,10 +50,11 @@ unsigned int manhattanDistance(unsigned int x1, unsigned int y1,
          std::abs(static_cast<int>(y1) - static_cast<int>(y2));
 }
 
-Game::Game(unsigned int width, unsigned int height, unsigned int players) {
-  assert(width > 0 && height > 0 && players > 0);
-  assert(width * height >= 10 * players);
+Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
+  assert(width > 0 && height > 0 && player_count > 0);
+  assert(width * height >= 10 * player_count);
 
+  total_player = current_player = player_count;
   const auto map_size = width * height;
   tiles.resize(map_size, Tile{Type::Blank});
 
@@ -78,8 +79,8 @@ Game::Game(unsigned int width, unsigned int height, unsigned int players) {
 
   // generate generals, ensuring they are far enough from each other
   std::vector<std::pair<unsigned int, unsigned int>> general_positions;
-  const unsigned int min_distance = width * height / players / 10;
-  std::generate_n(std::back_inserter(general_positions), players, [&] {
+  const unsigned int min_distance = width * height / player_count / 10;
+  std::generate_n(std::back_inserter(general_positions), player_count, [&] {
     unsigned int pos, x, y;
     do {
       pos = map_dist(gen);
@@ -105,7 +106,7 @@ PlayerBoard Game::player_view(Player player) const {
 }
 
 // Up, Down, Left, Right
-const std::array<std::pair<int, int>, 4> directions = {
+inline constexpr std::array<std::pair<int, int>, 4> directions = {
     {{-1, 0}, {1, 0}, {0, -1}, {0, 1}}};
 
 Game Game::apply(const Step &s) const {
@@ -136,8 +137,15 @@ void Game::apply_inplace(const Step &step) {
   } else {
     // different owner, fight
     t.army = std::abs(static_cast<int>(o.army - 1 - t.army));
-    if (o.army - 1 > t.army)
+    if (o.army - 1 > t.army) {
       t.owner = step.player;
+
+      // if the tile is a general, change it to a city
+      if (t.type == Type::General) {
+        t.type = Type::City;
+        current_player--;
+      }
+    }
   }
 }
 
