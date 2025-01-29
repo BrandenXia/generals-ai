@@ -126,6 +126,8 @@ void Game::apply_inplace(const Step &step) {
   auto &o = board[t_pos.first, t_pos.second];
   auto &t = board[t_pos.first, t_pos.second];
 
+  if (t.type == Type::Mountain) return;
+
   o.army = 1;
   if (t.owner == step.player) {
     // same owner, move army
