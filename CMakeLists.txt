@@ -11,6 +11,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include_directories(include)
+include_directories(external/include)
 
 file(GLOB_RECURSE SOURCES "src/*.cpp")
 add_executable(generals_ai ${SOURCES})

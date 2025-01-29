@@ -2,112 +2,66 @@
 #define GENERALS_GAME_HPP
 
 #include <cstddef>
+#include <cstdint>
 #include <mdspan>
 #include <optional>
 #include <ostream>
-#include <type_traits>
-#include <variant>
 #include <vector>
 
 namespace generals::game {
 
-struct Player {
-  unsigned int id;
-  inline bool operator==(const Player &other) const { return id == other.id; }
+using Player = std::optional<uint8_t>;
+
+enum class Type {
+  Blank,
+  Mountain,
+  City,
+  General,
+  // Only for player view
+  Unknown,
+  UnknownObstacles
 };
-using MaybePlayer = std::optional<Player>;
 
-namespace Tile {
-
-struct Blank {
-  MaybePlayer owner;
+struct Tile {
+  Type type;
   unsigned int army;
-};
-
-struct Mountain {};
-
-struct City {
-  MaybePlayer owner;
-  unsigned int army;
-};
-
-struct General {
   Player owner;
-  unsigned int army;
+
+  constexpr explicit Tile(Type t) : type(t), army(0), owner(std::nullopt) {}
+  explicit Tile(Type t, Player o, unsigned int a)
+      : type(t), army(a), owner(o) {}
 };
 
-using Type = std::variant<Blank, Mountain, City, General>;
+using Board = std::mdspan<Tile, std::dextents<std::size_t, 2>>;
+;
 
-template <typename T>
-concept HaveOwner = std::is_same_v<T, Blank> || std::is_same_v<T, City> ||
-                    std::is_same_v<T, General>;
-
-template <typename T>
-concept HaveOptionalOwner = std::is_same_v<T, Blank> || std::is_same_v<T, City>;
-
-// Unknown tiles are for player's fog of war
-
-// Unknown tiles are just blank tiles with unknown owner
-struct Unknown {};
-
-// unknown obstacles cab be either general, city or mountain
-struct UnknownObstacles {};
-
-using PlayerView =
-    std::variant<Blank, Mountain, City, General, Unknown, UnknownObstacles>;
-
-} // namespace Tile
-
-using Board = std::mdspan<Tile::Type, std::dextents<std::size_t, 2>>;
-
-struct PlayerBoard {
-private:
-  Board board;
-  bool is_unknown(size_t i, size_t j) const;
-
-public:
+struct PlayerBoard : Board {
   Player player;
 
-  PlayerBoard(Board board, Player player);
-  inline std::size_t extent(std::size_t i) const { return board.extent(i); }
-  Tile::PlayerView operator[](size_t i, size_t j) const;
+  bool is_unknown(std::size_t i, std::size_t j) const;
+  const Tile &operator[](std::size_t i, std::size_t j) const;
+};
+
+struct Step {
+  Player player;
+  std::pair<unsigned int, unsigned int> from;
+  enum class Direction { Up, Down, Left, Right } direction;
 };
 
 struct Game {
-private:
-  std::vector<Tile::Type> tiles;
-
-public:
+  std::vector<Tile> tiles;
   Board board;
 
-  Game(unsigned int width, unsigned int height, unsigned int players);
-  void next();
+  explicit Game(unsigned int width, unsigned int height, unsigned int players);
+  Game(const Game &);
   PlayerBoard player_view(Player player) const;
+  Game apply(const Step &step) const;
+  void apply_inplace(const Step &step);
 };
 
 } // namespace generals::game
 
-#define DEF_OSTREAM(t, c)                                                      \
-  inline std::ostream &operator<<(std::ostream &os, generals::game::t tile) {  \
-    return os << c;                                                            \
-  }
-
-DEF_OSTREAM(Tile::Blank, 'B');
-DEF_OSTREAM(Tile::Mountain, 'M');
-DEF_OSTREAM(Tile::City, 'C');
-DEF_OSTREAM(Tile::General, tile.owner.id);
-DEF_OSTREAM(Tile::Unknown, 'U');
-DEF_OSTREAM(Tile::UnknownObstacles, 'O');
-
-#undef DEF_OSTREAM
-
-template <typename T>
-  requires std::is_same_v<T, generals::game::Tile::Type> ||
-           std::is_same_v<T, generals::game::Tile::PlayerView>
-std::ostream &operator<<(std::ostream &os, T tile) {
-  std::visit([&os](auto &&t) { os << t; }, tile);
-  return os;
-}
+std::ostream &operator<<(std::ostream &os, generals::game::Tile tile);
 
 template <typename T>
   requires std::is_same_v<T, generals::game::Board> ||
