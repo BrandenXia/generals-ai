@@ -42,9 +42,11 @@ struct PlayerBoard : Board {
   const Tile &operator[](std::size_t i, std::size_t j) const;
 };
 
+using Coord = std::pair<unsigned int, unsigned int>;
+
 struct Step {
   Player player;
-  std::pair<unsigned int, unsigned int> from;
+  Coord from;
   enum class Direction { Up, Down, Left, Right } direction;
 };
 
@@ -52,8 +54,8 @@ struct Game {
   std::vector<Tile> tiles;
   Board board;
   unsigned int tick;
-  unsigned int total_player;
-  unsigned int current_player;
+  unsigned short total_player;
+  unsigned short current_player;
 
   explicit Game(unsigned int width, unsigned int height,
                 unsigned int player_count);
@@ -65,15 +67,23 @@ struct Game {
 
 } // namespace generals::game
 
+namespace generals {
+
+using game::Game;
+
+}
+
 std::ostream &operator<<(std::ostream &os, generals::game::Tile tile);
 
 template <typename T>
   requires std::is_same_v<T, generals::game::Board> ||
            std::is_same_v<T, generals::game::PlayerBoard>
 std::ostream &operator<<(std::ostream &os, T board) {
-  for (std::size_t i = 0; i < board.extent(0); ++i)
-    for (std::size_t j = 0; j < board.extent(1); ++j)
-      os << board[i, j] << (j == board.extent(1) - 1 ? '\n' : ' ');
+  const auto h = board.extent(0);
+  const auto w = board.extent(1);
+  for (std::size_t i = 0; i < h; ++i)
+    for (std::size_t j = 0; j < w; ++j)
+      os << board[i, j] << (j == w - 1 ? '\n' : ' ');
   return os;
 }
 

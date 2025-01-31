@@ -62,8 +62,8 @@ Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
   std::mt19937 gen{rd()};
   // clang-format off
   std::uniform_int_distribution<unsigned int>
-    mountain_n_dist{map_size / 10, map_size / 5},
-    city_n_dist{map_size / 35, map_size / 20},
+    mountain_n_dist{map_size / 6, map_size / 4},
+    city_n_dist{map_size / 35, map_size / 30},
     army_n_dist{30, 50},
     map_dist{0, map_size - 1};
   // ckanf-format on
@@ -75,7 +75,7 @@ Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
   for (unsigned int i = 0; i < mountain_n; ++i)
     tiles[map_dist(gen)] = Tile{Type::Mountain};
   for (unsigned int i = 0; i < city_n; ++i)
-    tiles[map_dist(gen)] = Tile{Type::City};
+    tiles[map_dist(gen)] = Tile{Type::City, std::nullopt, army_n_dist(gen)};
 
   // generate generals, ensuring they are far enough from each other
   std::vector<std::pair<unsigned int, unsigned int>> general_positions;
@@ -90,7 +90,7 @@ Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
       return manhattanDistance(x, y, p.first, p.second) < min_distance;
     }));
 
-    tiles[pos] = Tile{Type::General, {general_positions.size()}, 5};
+    tiles[pos] = Tile{Type::General, general_positions.size(), 100};
     return std::make_pair(x, y);
   });
 
@@ -116,29 +116,30 @@ Game Game::apply(const Step &s) const {
 }
 
 void Game::apply_inplace(const Step &step) {
-  if (board[step.from.first, step.from.second].owner != step.player) return;
+  auto &o = board[step.from.first, step.from.second];
+  if (o.owner != step.player) return;
+  if (o.army <= 1) return;
 
   const auto d = directions[static_cast<int>(step.direction)];
   const auto t_pos = std::make_pair(step.from.first + d.first, step.from.second + d.second);
 
   if (t_pos.first >= board.extent(0) || t_pos.second >= board.extent(1) || t_pos.first < 0 || t_pos.second < 0) return;
 
-  auto &o = board[t_pos.first, t_pos.second];
   auto &t = board[t_pos.first, t_pos.second];
 
   if (t.type == Type::Mountain) return;
 
-  o.army = 1;
   if (t.owner == step.player) {
     // same owner, move army
     t.army += o.army - 1;
   } else if (!t.owner.has_value()) {
     // no owner, take over
-    t.army = o.army - 1;
+    t.army = o.army - 1 - t.army;
     t.owner = step.player;
   } else {
     // different owner, fight
     t.army = std::abs(static_cast<int>(o.army - 1 - t.army));
+    // taken over
     if (o.army - 1 > t.army) {
       t.owner = step.player;
 
@@ -149,6 +150,7 @@ void Game::apply_inplace(const Step &step) {
       }
     }
   }
+  o.army = 1;
 }
 
 } // namespace generals::game //
