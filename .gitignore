@@ -3,3 +3,6 @@
 
 # debug
 .cache
+
+# filesytem
+.DS_Store

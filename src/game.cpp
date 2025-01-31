@@ -90,7 +90,7 @@ Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
       return manhattanDistance(x, y, p.first, p.second) < min_distance;
     }));
 
-    tiles[pos] = Tile{Type::General, general_positions.size(), 100};
+    tiles[pos] = Tile{Type::General, general_positions.size(), 1};
     return std::make_pair(x, y);
   });
 
@@ -150,7 +150,20 @@ void Game::apply_inplace(const Step &step) {
   o.army = 1;
 }
 
-} // namespace generals::game //
+void Game::next_turn() {
+  tick++;
+
+  const auto div_by_2 = tick % 2 == 0;
+  const auto div_by_25 = tick % 25 == 0;
+  std::ranges::for_each(tiles, [&](auto &tile) {
+    if (div_by_2 && (tile.type == Type::City && tile.owner.has_value() || tile.type == Type::General))
+      tile.army++;
+    if (div_by_25 && tile.type == Type::Blank && tile.owner.has_value())
+      tile.army++;
+  });
+}
+
+} // namespace generals::game
 
 inline constexpr std::array<char, 6> symbols = {' ', 'M', 'C', 'G', '?', 'X'};
 

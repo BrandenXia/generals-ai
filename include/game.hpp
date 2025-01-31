@@ -63,6 +63,7 @@ struct Game {
   PlayerBoard player_view(Player player) const;
   Game apply(const Step &step) const;
   void apply_inplace(const Step &step);
+  void next_turn();
 };
 
 } // namespace generals::game
