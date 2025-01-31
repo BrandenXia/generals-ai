@@ -4,8 +4,9 @@ project(generals_ai)
 set(CMAKE_CXX_STANDARD 23)
 
 set(CMAKE_CXX_FLAGS_DEBUG
-        "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer"
-)
+  "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fsanitize=undefined \
+  -fno-omit-frame-pointer \
+")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -16,7 +17,17 @@ include_directories(external/include)
 file(GLOB_RECURSE SOURCES "src/*.cpp")
 add_executable(generals_ai ${SOURCES})
 
+# libtorch
 find_package(Torch REQUIRED)
 include_directories(${TORCH_INCLUDE_DIRS})
 target_link_libraries(generals_ai PRIVATE "${TORCH_LIBRARIES}")
-set_property(TARGET generals_ai PROPERTY CXX_STANDARD 23)
+
+# raylib
+find_package(raylib REQUIRED)
+include_directories(${RAYLIB_INCLUDE_DIRS})
+target_link_libraries(generals_ai PRIVATE raylib)
+if (APPLE)
+  target_link_libraries(generals_ai PRIVATE "-framework IOKit")
+  target_link_libraries(generals_ai PRIVATE "-framework Cocoa")
+  target_link_libraries(generals_ai PRIVATE "-framework OpenGL")
+endif()
