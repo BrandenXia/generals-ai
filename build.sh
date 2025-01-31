@@ -5,4 +5,4 @@ if [ ! -d "build" ]; then
 fi
 
 cmake -S . -B build -DCMAKE_PREFIX_PATH=$MAMBA_ROOT_PREFIX/envs/torch/lib
-make -C build
+cmake --build build
