@@ -132,15 +132,12 @@ void Game::apply_inplace(const Step &step) {
   if (t.owner == step.player) {
     // same owner, move army
     t.army += o.army - 1;
-  } else if (!t.owner.has_value()) {
-    // no owner, take over
-    t.army = o.army - 1 - t.army;
-    t.owner = step.player;
   } else {
-    // different owner, fight
-    t.army = std::abs(static_cast<int>(o.army - 1 - t.army));
+    // fight
+    const int army = static_cast<int>(o.army) - 1 - static_cast<int>(t.army);
+    t.army = std::abs(army);
     // taken over
-    if (o.army - 1 > t.army) {
+    if (army > 0) {
       t.owner = step.player;
 
       // if the tile is a general, change it to a city
