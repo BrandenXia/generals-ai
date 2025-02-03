@@ -13,7 +13,7 @@ namespace generals::interaction {
 template <typename T>
 concept SelectAction = requires(T t) {
   {
-    t(std::declval<const Game &>(), std::declval<const game::Player &>())
+    t(std::declval<const PlayerBoard &>())
   } -> std::convertible_to<std::pair<game::Coord, game::Step::Direction>>;
 };
 
@@ -50,7 +50,7 @@ void interaction_loop(Game &game, T select_action) {
     }
     if (direction.has_value()) {
       game.apply_inplace({0, coord, direction.value()});
-      const auto &[coord, direction] = select_action(game, 1);
+      const auto &[coord, direction] = select_action(game.player_view(1));
       game.apply_inplace({1, coord, direction});
       game.next_turn();
     }

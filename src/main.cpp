@@ -2,8 +2,7 @@
 #include "interaction.hpp"
 
 std::pair<generals::game::Coord, generals::game::Step::Direction>
-select_action(const generals::game::Game &game,
-              const generals::game::Player &player) {
+select_action(const generals::PlayerBoard &game) {
   return {{0, 0}, generals::game::Step::Direction::Up};
 }
 

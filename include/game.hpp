@@ -64,13 +64,14 @@ struct Game {
   Game apply(const Step &step) const;
   void apply_inplace(const Step &step);
   void next_turn();
+  inline bool is_over() const { return current_player <= 1; }
 };
 
 } // namespace generals::game
 
 namespace generals {
 
-using game::Game;
+using game::Game, game::PlayerBoard;
 
 }
 
@@ -78,7 +79,7 @@ std::ostream &operator<<(std::ostream &os, generals::game::Tile tile);
 
 template <typename T>
   requires std::is_same_v<T, generals::game::Board> ||
-           std::is_same_v<T, generals::game::PlayerBoard>
+           std::is_same_v<T, generals::PlayerBoard>
 std::ostream &operator<<(std::ostream &os, T board) {
   const auto h = board.extent(0);
   const auto w = board.extent(1);
