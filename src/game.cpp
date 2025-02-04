@@ -1,5 +1,8 @@
 #include "game.hpp"
 
+#include <ATen/core/TensorBody.h>
+#include <ATen/ops/empty.h>
+#include <ATen/ops/ones.h>
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -42,6 +45,33 @@ const Tile &PlayerBoard::operator[](size_t i, size_t j) const {
     return Board::operator[](i, j).type == Type::Blank ? UNKNOWN_TILE
                                                        : UNKNOWN_OBSTACLES_TILE;
   return Board::operator[](i, j);
+}
+
+at::Tensor PlayerBoard::to_tensor() const {
+  auto tensor = at::empty({static_cast<long long>(extent(0)),
+                           static_cast<long long>(extent(1)), 3});
+  for (size_t i = 0; i < extent(0); ++i)
+    for (size_t j = 0; j < extent(1); ++j) {
+      const auto &tile = operator[](i, j);
+      tensor[i][j][0] = static_cast<uint8_t>(tile.type);
+      tensor[i][j][1] = tile.army;
+      tensor[i][j][2] = tile.owner.value_or(-1);
+    }
+  return tensor;
+}
+
+at::Tensor PlayerBoard::action_mask() const {
+  auto h = extent(0);
+  auto w = extent(1);
+  at::Tensor mask =
+      at::ones({1, static_cast<long long>(w) * static_cast<long long>(h)});
+
+  for (size_t i = 0; i < h; ++i)
+    for (size_t j = 0; j < w; ++j) {
+      if (is_unknown(i, j)) mask[0][i * w + j] = 0;
+    }
+
+  return mask;
 }
 
 unsigned int manhattanDistance(unsigned int x1, unsigned int y1,

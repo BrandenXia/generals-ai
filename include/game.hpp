@@ -1,6 +1,7 @@
 #ifndef GENERALS_GAME_HPP
 #define GENERALS_GAME_HPP
 
+#include <ATen/core/TensorBody.h>
 #include <cstddef>
 #include <cstdint>
 #include <mdspan>
@@ -40,6 +41,8 @@ struct PlayerBoard : Board {
 
   bool is_unknown(std::size_t i, std::size_t j) const;
   const Tile &operator[](std::size_t i, std::size_t j) const;
+  at::Tensor to_tensor() const;
+  at::Tensor action_mask() const;
 };
 
 using Coord = std::pair<unsigned int, unsigned int>;
