@@ -9,12 +9,14 @@
 
 namespace generals::interaction {
 
+using Action = std::pair<game::Coord, game::Step::Direction>;
 using SelectAction =
     std::function<std::pair<game::Coord, game::Step::Direction>(
         const PlayerBoard &)>;
+using Optimization = std::function<void(Action)>;
 
 void interaction_train(Game &game, SelectAction select_action,
-                       std::function<void()> on_turn_end);
+                       Optimization optimization);
 
 } // namespace generals::interaction
 

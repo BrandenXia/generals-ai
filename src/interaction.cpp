@@ -11,7 +11,7 @@ void interaction_train(
     std::function<
         std::pair<game::Coord, game::Step::Direction>(const PlayerBoard &)>
         select_action,
-    std::function<void()> on_turn_end) {
+    Optimization optimization) {
   display::init_window(game);
 
   while (!WindowShouldClose()) {
@@ -46,7 +46,7 @@ void interaction_train(
       const auto &[coord, direction] = select_action(game.player_view(1));
       game.apply_inplace({1, coord, direction});
       game.next_turn();
-      on_turn_end();
+      optimization({coord, direction});
     }
 
     EndDrawing();

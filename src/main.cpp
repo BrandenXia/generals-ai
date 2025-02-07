@@ -1,3 +1,4 @@
+#include <iostream>
 #include <torch/optim/adam.h>
 
 #include "evaluation.hpp"
@@ -19,11 +20,16 @@ int main() {
     const auto &select_action = [&network](const game::PlayerBoard &board) {
       return network.select_action(board);
     };
-    const auto on_turn_end = [&]() {
-      double reward = eval(game, 1);
-      auto loss = -torch::log(torch::scalar_tensor(reward));
+    const auto on_turn_end = [&](const auto action) {
+      double reward_value = eval(game, 1);
+      auto reward = torch::tensor(
+          reward_value, torch::TensorOptions().dtype(torch::kFloat32));
+      auto loss = -torch::log(reward);
+      std::cout << 1 << std::endl;
       optimizer.zero_grad();
+      std::cout << 1 << std::endl;
       loss.backward();
+      std::cout << 1 << std::endl;
       optimizer.step();
     };
 

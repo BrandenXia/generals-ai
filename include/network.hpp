@@ -13,7 +13,7 @@ namespace generals {
 
 struct GeneralsNetwork : torch::nn::Module {
   torch::nn::Sequential conv_layers;
-  torch::nn::Linear direction_fc{nullptr};
+  torch::nn::Linear direction_fc;
 
   GeneralsNetwork(unsigned int w, unsigned int h);
   std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x,

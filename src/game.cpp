@@ -7,7 +7,6 @@
 #include <array>
 #include <cassert>
 #include <functional>
-#include <ostream>
 #include <random>
 #include <termcolor/termcolor.hpp>
 #include <utility>
@@ -48,27 +47,31 @@ const Tile &PlayerBoard::operator[](size_t i, size_t j) const {
 }
 
 at::Tensor PlayerBoard::to_tensor() const {
-  auto tensor = at::empty({static_cast<long long>(extent(0)),
-                           static_cast<long long>(extent(1)), 3});
-  for (size_t i = 0; i < extent(0); ++i)
-    for (size_t j = 0; j < extent(1); ++j) {
+  auto h = extent(0);
+  auto w = extent(1);
+
+  auto tensor = at::empty({3, static_cast<long long>(extent(0)),
+                           static_cast<long long>(extent(1))});
+  for (size_t i = 0; i < h; ++i) {
+    for (size_t j = 0; j < w; ++j) {
       const auto &tile = operator[](i, j);
-      tensor[i][j][0] = static_cast<uint8_t>(tile.type);
-      tensor[i][j][1] = tile.army;
-      tensor[i][j][2] = tile.owner.value_or(-1);
+      tensor[0][i][j] = static_cast<uint8_t>(tile.type);
+      tensor[1][i][j] = tile.army;
+      tensor[2][i][j] = tile.owner.value_or(-1);
     }
+  }
   return tensor;
 }
 
 at::Tensor PlayerBoard::action_mask() const {
   auto h = extent(0);
   auto w = extent(1);
-  at::Tensor mask =
-      at::ones({1, static_cast<long long>(w) * static_cast<long long>(h)});
+  at::Tensor mask = at::ones(
+      {static_cast<long long>(h), static_cast<long long>(w)}, at::kByte);
 
   for (size_t i = 0; i < h; ++i)
     for (size_t j = 0; j < w; ++j) {
-      if (is_unknown(i, j)) mask[0][i * w + j] = 0;
+      if (is_unknown(i, j)) mask[i][j] = 0;
     }
 
   return mask;
