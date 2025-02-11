@@ -15,8 +15,7 @@
 
 namespace generals {
 
-GeneralsNetwork::GeneralsNetwork(unsigned int w, unsigned int h)
-    : direction_fc(nullptr) {
+GeneralsNetworkImpl::GeneralsNetworkImpl() : direction_fc(nullptr) {
   conv_layers = torch::nn::Sequential(
       torch::nn::Conv2d(
           torch::nn::Conv2dOptions(3, 32, 3).stride(1).padding(1)),
@@ -31,7 +30,7 @@ GeneralsNetwork::GeneralsNetwork(unsigned int w, unsigned int h)
 }
 
 std::pair<at::Tensor, at::Tensor>
-GeneralsNetwork::forward(torch::Tensor x, torch::Tensor action_mask) {
+GeneralsNetworkImpl::forward(torch::Tensor x, torch::Tensor action_mask) {
   x = x.unsqueeze(0);
   action_mask = action_mask.unsqueeze(0).unsqueeze(1);
 

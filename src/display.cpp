@@ -22,8 +22,8 @@ void init_window(const Game &game) {
   const auto w = game.board.extent(1);
 
   SetTraceLogLevel(LOG_ERROR);
-  InitWindow(h * TILE_WITH_BORDER - BORDER_SIZE,
-             w * TILE_WITH_BORDER - BORDER_SIZE, "Generals AI GUI");
+  InitWindow(w * TILE_WITH_BORDER - BORDER_SIZE,
+             h * TILE_WITH_BORDER - BORDER_SIZE, "Generals AI GUI");
   SetTargetFPS(FPS);
 }
 

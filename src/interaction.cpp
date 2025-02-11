@@ -6,10 +6,12 @@
 
 namespace generals::interaction {
 
-void interaction_train(Game &game, std::function<void()> interact) {
+bool interaction_train(Game &game, std::function<void()> interact) {
   display::init_window(game);
 
-  while (!WindowShouldClose()) {
+  bool closed_by_player = false;
+
+  while (!(closed_by_player = WindowShouldClose()) && !game.is_over()) {
     BeginDrawing();
 
     display::draw_game(game);
@@ -45,6 +47,8 @@ void interaction_train(Game &game, std::function<void()> interact) {
   }
 
   CloseWindow();
+
+  return closed_by_player;
 }
 
 } // namespace generals::interaction

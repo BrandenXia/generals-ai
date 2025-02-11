@@ -11,14 +11,15 @@
 
 namespace generals {
 
-struct GeneralsNetwork : torch::nn::Module {
+struct GeneralsNetworkImpl : torch::nn::Module {
   torch::nn::Sequential conv_layers;
   torch::nn::Linear direction_fc;
 
-  GeneralsNetwork(unsigned int w, unsigned int h);
+  GeneralsNetworkImpl();
   std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x,
                                                   torch::Tensor action_mask);
 };
+TORCH_MODULE(GeneralsNetwork);
 
 std::pair<game::Coord, game::Step::Direction>
 select_action(torch::Tensor from_probs, torch::Tensor direction_probs);

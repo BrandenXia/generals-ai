@@ -11,7 +11,7 @@ namespace generals::interaction {
 
 using Action = std::pair<game::Coord, game::Step::Direction>;
 
-void interaction_train(Game &game, std::function<void()> interact);
+bool interaction_train(Game &game, std::function<void()> interact);
 
 } // namespace generals::interaction
 
