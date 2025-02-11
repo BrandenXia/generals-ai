@@ -1,4 +1,5 @@
-#include <iostream>
+#include <ATen/ops/mse_loss.h>
+#include <c10/core/TensorOptions.h>
 #include <torch/optim/adam.h>
 
 #include "evaluation.hpp"
@@ -17,23 +18,39 @@ int main() {
   for (int i = 0; i < 100; i++) {
     Game game{20, 20, 2};
 
-    const auto &select_action = [&network](const game::PlayerBoard &board) {
-      return network.select_action(board);
-    };
-    const auto on_turn_end = [&](const auto action) {
-      double reward_value = eval(game, 1);
-      auto reward = torch::tensor(
-          reward_value, torch::TensorOptions().dtype(torch::kFloat32));
-      auto loss = -torch::log(reward);
-      std::cout << 1 << std::endl;
+    const auto interact = [&] {
+      const auto &player_board = game.player_view(1);
+      auto [from_probs, direction_probs] =
+          network.forward(player_board.to_tensor(), player_board.action_mask());
+      const auto &[from, direction] =
+          select_action(from_probs, direction_probs);
+
+      std::cout << "from: " << from.first << " " << from.second << std::endl;
+      std::cout << "direction: " << static_cast<int>(direction) << std::endl;
+
+      game.apply_inplace({1, from, direction});
+      game.next_turn();
+
+      double reward = eval(game, 1);
+      auto reward_tensor = torch::tensor(
+          {reward}, torch::TensorOptions().dtype(torch::kFloat32));
+
+      auto flattened_from_probs = from_probs.view({-1});
+      auto selected_from_prob =
+          flattened_from_probs[from.first * from_probs.size(1) + from.second];
+      auto selected_direction_prob =
+          direction_probs[static_cast<int>(direction)];
+
+      auto loss = -(torch::log(selected_from_prob) +
+                    torch::log(selected_direction_prob)) *
+                  reward_tensor;
+
       optimizer.zero_grad();
-      std::cout << 1 << std::endl;
       loss.backward();
-      std::cout << 1 << std::endl;
       optimizer.step();
     };
 
-    interaction::interaction_train(game, select_action, on_turn_end);
+    interaction::interaction_train(game, interact);
   }
 
   return 0;

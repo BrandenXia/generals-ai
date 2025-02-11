@@ -6,12 +6,7 @@
 
 namespace generals::interaction {
 
-void interaction_train(
-    Game &game,
-    std::function<
-        std::pair<game::Coord, game::Step::Direction>(const PlayerBoard &)>
-        select_action,
-    Optimization optimization) {
+void interaction_train(Game &game, std::function<void()> interact) {
   display::init_window(game);
 
   while (!WindowShouldClose()) {
@@ -43,10 +38,7 @@ void interaction_train(
     }
     if (direction.has_value()) {
       game.apply_inplace({0, coord, direction.value()});
-      const auto &[coord, direction] = select_action(game.player_view(1));
-      game.apply_inplace({1, coord, direction});
-      game.next_turn();
-      optimization({coord, direction});
+      interact();
     }
 
     EndDrawing();

@@ -51,14 +51,14 @@ GeneralsNetwork::forward(torch::Tensor x, torch::Tensor action_mask) {
 }
 
 std::pair<game::Coord, game::Step::Direction>
-GeneralsNetwork::select_action(const game::PlayerBoard &board) {
-  auto action_mask = board.action_mask();
-  auto [from_probs, direction_probs] = forward(board.to_tensor(), action_mask);
+select_action(torch::Tensor from_probs, torch::Tensor direction_probs) {
+  auto board_probs = from_probs.sum(0);
+  int m = board_probs.size(1);
 
-  auto flattened_from_probs = from_probs.view({-1});
-  auto from_index = flattened_from_probs.multinomial(1).item<int>();
+  board_probs = torch::softmax(board_probs.view({-1}), 0);
 
-  int m = board.extent(1);
+  auto from_index = board_probs.multinomial(1).item<int>();
+
   game::Coord from = {from_index / m, from_index % m};
 
   auto direction_index = direction_probs.multinomial(1).item<int>();

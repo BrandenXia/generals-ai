@@ -18,9 +18,10 @@ struct GeneralsNetwork : torch::nn::Module {
   GeneralsNetwork(unsigned int w, unsigned int h);
   std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x,
                                                   torch::Tensor action_mask);
-  std::pair<game::Coord, game::Step::Direction>
-  select_action(const game::PlayerBoard &board);
 };
+
+std::pair<game::Coord, game::Step::Direction>
+select_action(torch::Tensor from_probs, torch::Tensor direction_probs);
 
 } // namespace generals
 

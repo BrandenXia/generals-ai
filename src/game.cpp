@@ -52,14 +52,14 @@ at::Tensor PlayerBoard::to_tensor() const {
 
   auto tensor = at::empty({3, static_cast<long long>(extent(0)),
                            static_cast<long long>(extent(1))});
-  for (size_t i = 0; i < h; ++i) {
+  for (size_t i = 0; i < h; ++i)
     for (size_t j = 0; j < w; ++j) {
       const auto &tile = operator[](i, j);
       tensor[0][i][j] = static_cast<uint8_t>(tile.type);
       tensor[1][i][j] = tile.army;
       tensor[2][i][j] = tile.owner.value_or(-1);
     }
-  }
+
   return tensor;
 }
 
@@ -70,9 +70,8 @@ at::Tensor PlayerBoard::action_mask() const {
       {static_cast<long long>(h), static_cast<long long>(w)}, at::kByte);
 
   for (size_t i = 0; i < h; ++i)
-    for (size_t j = 0; j < w; ++j) {
-      if (is_unknown(i, j)) mask[i][j] = 0;
-    }
+    for (size_t j = 0; j < w; ++j)
+      if (this->operator[](i, j).owner != player) mask[i][j] = 0;
 
   return mask;
 }
@@ -99,7 +98,7 @@ Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
     city_n_dist{map_size / 35, map_size / 30},
     army_n_dist{30, 50},
     map_dist{0, map_size - 1};
-  // ckanf-format on
+  // clang-format on
 
   const auto mountain_n = mountain_n_dist(gen);
   const auto city_n = city_n_dist(gen);
@@ -154,9 +153,12 @@ void Game::apply_inplace(const Step &step) {
   if (o.army <= 1) return;
 
   const auto d = directions[static_cast<int>(step.direction)];
-  const auto t_pos = std::make_pair(step.from.first + d.first, step.from.second + d.second);
+  const auto t_pos =
+      std::make_pair(step.from.first + d.first, step.from.second + d.second);
 
-  if (t_pos.first >= board.extent(0) || t_pos.second >= board.extent(1) || t_pos.first < 0 || t_pos.second < 0) return;
+  if (t_pos.first >= board.extent(0) || t_pos.second >= board.extent(1) ||
+      t_pos.first < 0 || t_pos.second < 0)
+    return;
 
   auto &t = board[t_pos.first, t_pos.second];
 
@@ -189,7 +191,8 @@ void Game::next_turn() {
   const auto div_by_2 = tick % 2 == 0;
   const auto div_by_25 = tick % 25 == 0;
   std::ranges::for_each(tiles, [&](auto &tile) {
-    if (div_by_2 && (tile.type == Type::City && tile.owner.has_value() || tile.type == Type::General))
+    if (div_by_2 && (tile.type == Type::City && tile.owner.has_value() ||
+                     tile.type == Type::General))
       tile.army++;
     if (div_by_25 && tile.type == Type::Blank && tile.owner.has_value())
       tile.army++;
@@ -201,13 +204,10 @@ void Game::next_turn() {
 inline constexpr std::array<char, 6> symbols = {' ', 'M', 'C', 'G', '?', 'X'};
 
 #define EXPAND_COLOR(bg_color) termcolor::on_##bg_color<char>
-inline const std::array<std::function<std::ostream &(std::ostream &)>, 6> colors = {
-  EXPAND_COLOR(red),
-  EXPAND_COLOR(green),
-  EXPAND_COLOR(yellow),
-  EXPAND_COLOR(blue),
-  EXPAND_COLOR(magenta),
-  EXPAND_COLOR(cyan),
+inline const std::array<std::function<std::ostream &(std::ostream &)>, 6>
+    colors = {
+        EXPAND_COLOR(red),  EXPAND_COLOR(green),   EXPAND_COLOR(yellow),
+        EXPAND_COLOR(blue), EXPAND_COLOR(magenta), EXPAND_COLOR(cyan),
 };
 #undef EXPAND_COLOR
 
