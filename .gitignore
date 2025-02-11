@@ -6,3 +6,9 @@
 
 # filesytem
 .DS_Store
+
+# logs
+/log
+
+# data
+/data
