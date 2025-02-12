@@ -6,7 +6,7 @@
 
 namespace generals::interaction {
 
-bool interaction_train(Game &game, std::function<void()> interact) {
+bool interaction(Game &game, std::function<void()> interact) {
   display::init_window(game);
 
   bool closed_by_player = false;

@@ -3,13 +3,12 @@
 #include <ATen/core/TensorBody.h>
 #include <ATen/ops/softmax.h>
 #include <c10/core/ScalarType.h>
+#include <spdlog/spdlog.h>
 #include <torch/nn/functional/pooling.h>
 #include <torch/nn/modules/activation.h>
 #include <torch/nn/modules/container/sequential.h>
 #include <torch/nn/modules/conv.h>
 #include <torch/nn/modules/linear.h>
-#include <torch/nn/modules/pooling.h>
-#include <torch/serialize.h>
 #include <utility>
 
 #include "game.hpp"
@@ -64,6 +63,9 @@ select_action(torch::Tensor from_probs, torch::Tensor direction_probs) {
   auto direction_index = direction_probs.multinomial(1).item<int>();
   game::Step::Direction direction =
       static_cast<game::Step::Direction>(direction_index);
+
+  spdlog::debug("Selected action: from = ({}, {}), direction = {}", from.first,
+                from.second, direction);
 
   return {from, direction};
 }

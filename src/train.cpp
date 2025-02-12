@@ -1,6 +1,8 @@
 #include "train.hpp"
 
 #include <random>
+#include <spdlog/fmt/std.h>
+#include <spdlog/spdlog.h>
 #include <torch/optim/adam.h>
 #include <torch/serialize.h>
 
@@ -17,6 +19,8 @@ inline const auto NETWORK_PATH = DATA_DIR / "network.pt";
 void interactive_train() {
   using namespace generals;
 
+  spdlog::info("Starting interactive training");
+
   GeneralsNetwork network;
   torch::optim::Adam optimizer(network->parameters(),
                                torch::optim::AdamOptions(1e-3));
@@ -25,12 +29,18 @@ void interactive_train() {
   std::uniform_int_distribution<unsigned int> map_size{18, 25};
   eval::AlgoEval eval;
 
+  spdlog::info("Try loading network from {}", NETWORK_PATH);
   try {
     torch::load(network, NETWORK_PATH);
-  } catch (const c10::Error &) {}
+  } catch (const c10::Error &) {
+    spdlog::info("Failed to load network, creating a new one");
+  }
 
   while (true) {
     Game game{map_size(gen), map_size(gen), 2};
+
+    spdlog::info("Starting new game with map size {}x{}", game.board.extent(0),
+                 game.board.extent(1));
 
     const auto interact = [&] {
       const auto &player_board = game.player_view(1);
@@ -61,10 +71,14 @@ void interactive_train() {
       optimizer.step();
     };
 
-    auto closed = interaction::interaction_train(game, interact);
+    auto closed = interaction::interaction(game, interact);
 
     if (closed) {
-      std::filesystem::create_directories(DATA_DIR); // TODO: log here
+      spdlog::info("Window closed, saving network to {}", NETWORK_PATH);
+
+      if (std::filesystem::create_directories(DATA_DIR))
+        spdlog::info("Created directory {}", DATA_DIR);
+
       torch::save(network, NETWORK_PATH);
       break;
     }

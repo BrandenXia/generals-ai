@@ -1,5 +1,12 @@
+#include <spdlog/spdlog.h>
+
 #include "train.hpp"
 
 using namespace generals;
 
-int main() { train::interactive_train(); }
+int main() {
+#ifdef DEBUG
+  spdlog::set_level(spdlog::level::debug);
+#endif
+  train::interactive_train();
+}

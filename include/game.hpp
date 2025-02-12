@@ -50,8 +50,14 @@ using Coord = std::pair<unsigned int, unsigned int>;
 struct Step {
   Player player;
   Coord from;
-  enum class Direction { Up, Down, Left, Right } direction;
+  enum class Direction : std::uint8_t { Up, Down, Left, Right } direction;
 };
+
+inline constexpr std::array<std::string, 4> direction_str = {"Up", "Down",
+                                                             "Left", "Right"};
+inline auto format_as(const Step::Direction &direction) {
+  return direction_str[static_cast<int>(direction)];
+}
 
 struct Game {
   std::vector<Tile> tiles;
