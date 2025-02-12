@@ -21,6 +21,7 @@ void interactive_train() {
   torch::optim::Adam optimizer(network->parameters(),
                                torch::optim::AdamOptions(1e-3));
   std::random_device rd;
+  std::mt19937 gen(rd());
   std::uniform_int_distribution<unsigned int> map_size{18, 25};
   eval::AlgoEval eval;
 
@@ -29,7 +30,7 @@ void interactive_train() {
   } catch (const c10::Error &) {}
 
   while (true) {
-    Game game{map_size(rd), map_size(rd), 2};
+    Game game{map_size(gen), map_size(gen), 2};
 
     const auto interact = [&] {
       const auto &player_board = game.player_view(1);
