@@ -4,12 +4,15 @@
 #include <torch/optim/adam.h>
 #include <torch/serialize.h>
 
+#include "dirs.hpp"
 #include "evaluation.hpp"
 #include "game.hpp"
 #include "interaction.hpp"
 #include "network.hpp"
 
 namespace generals::train {
+
+inline const auto NETWORK_PATH = DATA_DIR / "network.pt";
 
 void interactive_train() {
   using namespace generals;
@@ -22,7 +25,7 @@ void interactive_train() {
   eval::AlgoEval eval;
 
   try {
-    torch::load(network, "network.pt");
+    torch::load(network, NETWORK_PATH);
   } catch (const c10::Error &) {}
 
   while (true) {
@@ -60,7 +63,8 @@ void interactive_train() {
     auto closed = interaction::interaction_train(game, interact);
 
     if (closed) {
-      torch::save(network, "network.pt");
+      std::filesystem::create_directories(DATA_DIR); // TODO: log here
+      torch::save(network, NETWORK_PATH);
       break;
     }
   }
