@@ -4,6 +4,7 @@
 #include <ATen/core/TensorBody.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/ones.h>
+#include <ATen/ops/zeros.h>
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -48,18 +49,19 @@ const Tile &PlayerBoard::operator[](size_t i, size_t j) const {
 }
 
 at::Tensor PlayerBoard::to_tensor() const {
-  auto h = extent(0);
-  auto w = extent(1);
+  unsigned int h = extent(0);
+  unsigned int w = extent(1);
+  unsigned int layers = 2 + type_count;
 
-  auto tensor = at::empty({3, static_cast<long long>(extent(0)),
-                           static_cast<long long>(extent(1))})
-                    .to(get_device());
+  auto tensor = at::zeros({layers, h, w}).to(get_device());
   for (size_t i = 0; i < h; ++i)
     for (size_t j = 0; j < w; ++j) {
       const auto &tile = operator[](i, j);
-      tensor[0][i][j] = static_cast<uint8_t>(tile.type);
+      tensor[0][i][j] = tile.owner.value_or(-1);
       tensor[1][i][j] = tile.army;
-      tensor[2][i][j] = tile.owner.value_or(-1);
+
+      int type_index = static_cast<int>(tile.type) + 2;
+      tensor[type_index][i][j] = 1;
     }
 
   return tensor;

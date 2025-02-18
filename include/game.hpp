@@ -4,6 +4,7 @@
 #include <ATen/core/TensorBody.h>
 #include <cstddef>
 #include <cstdint>
+#include <magic_enum/magic_enum.hpp>
 #include <mdspan>
 #include <optional>
 #include <ostream>
@@ -22,6 +23,7 @@ enum class Type {
   Unknown,
   UnknownObstacles
 };
+constexpr inline std::uint8_t type_count = magic_enum::enum_count<Type>();
 
 struct Tile {
   Type type;
