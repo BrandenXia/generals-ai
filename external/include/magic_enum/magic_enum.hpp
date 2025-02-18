@@ -1168,7 +1168,6 @@ template <typename E>
   return name;
 }
 
-// Returns number of enum values.
 template <typename E, detail::enum_subtype S = detail::subtype_v<E>>
 [[nodiscard]] constexpr auto enum_count() noexcept -> detail::enable_if_t<E, std::size_t> {
   return detail::count_v<std::decay_t<E>, S>;

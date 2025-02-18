@@ -13,6 +13,7 @@ namespace generals {
 
 struct GeneralsNetworkImpl : torch::nn::Module {
   torch::nn::Sequential conv_layers;
+  torch::nn::Sequential fc_layers;
   torch::nn::Linear direction_fc;
 
   GeneralsNetworkImpl();
