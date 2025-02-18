@@ -1,6 +1,7 @@
+#include "display.hpp"
+
 #include <raylib.h>
 
-#include "display.hpp"
 #include "game.hpp"
 
 namespace generals::display {

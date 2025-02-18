@@ -89,10 +89,7 @@ void interactive_train() {
   }
 }
 
-constexpr int GAME_NUMS = 1000;
-constexpr int MAX_TICKS = 1000;
-
-void train() {
+void train(int game_nums, int max_ticks) {
   using namespace generals;
 
   spdlog::info("Starting training");
@@ -115,14 +112,14 @@ void train() {
   }
   network->to(device);
 
-  for (int i = 0; i < GAME_NUMS; ++i) {
+  for (int i = 0; i < game_nums; ++i) {
     const auto w = map_size(gen), h = map_size(gen);
     spdlog::info("Starting game {} with map size {}x{}", i, w, h);
 
     Game game{w, h, 2};
     auto view_0 = game.player_view(0);
 
-    while (game.tick < MAX_TICKS && !game.is_over()) {
+    while (game.tick < max_ticks && !game.is_over()) {
       auto [from_probs, direction_probs] =
           network->forward(view_0.to_tensor(), view_0.action_mask());
       const auto &[from, direction] =

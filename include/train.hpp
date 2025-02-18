@@ -5,7 +5,7 @@ namespace generals::train {
 
 void interactive_train();
 
-void train();
+void train(int game_nums, int max_ticks);
 
 } // namespace generals::train
 
