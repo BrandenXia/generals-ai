@@ -4,9 +4,4 @@
 
 using namespace generals;
 
-int main() {
-#ifdef DEBUG
-  spdlog::set_level(spdlog::level::debug);
-#endif
-  train::interactive_train();
-}
+int main() { train::train(); }

@@ -4,8 +4,7 @@ project(generals_ai)
 set(CMAKE_CXX_STANDARD 23)
 
 set(CMAKE_CXX_FLAGS_DEBUG
-  "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fsanitize=undefined \
-  -fno-omit-frame-pointer \
+  "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address -fsanitize=undefined
 ")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 

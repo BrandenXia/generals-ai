@@ -11,11 +11,13 @@
 #include <torch/nn/modules/linear.h>
 #include <utility>
 
+#include "device.hpp"
 #include "game.hpp"
 
 namespace generals {
 
 GeneralsNetworkImpl::GeneralsNetworkImpl() : direction_fc(nullptr) {
+  auto device = get_device();
   conv_layers = torch::nn::Sequential(
       torch::nn::Conv2d(
           torch::nn::Conv2dOptions(3, 32, 3).stride(1).padding(1)),
@@ -26,7 +28,9 @@ GeneralsNetworkImpl::GeneralsNetworkImpl() : direction_fc(nullptr) {
       torch::nn::Conv2d(
           torch::nn::Conv2dOptions(64, 128, 3).stride(1).padding(1)),
       torch::nn::ReLU());
+  conv_layers->to(device);
   direction_fc = register_module("direction_linear", torch::nn::Linear(128, 4));
+  direction_fc->to(device);
 }
 
 std::pair<at::Tensor, at::Tensor>
@@ -43,8 +47,8 @@ GeneralsNetworkImpl::forward(torch::Tensor x, torch::Tensor action_mask) {
   from_probs = from_probs.view({x.size(0), x.size(1), x.size(2), x.size(3)});
 
   auto pooled = torch::nn::functional::adaptive_max_pool2d(x, {{1, 1}});
-  auto direction_probs = torch::softmax(
-      direction_fc->forward(pooled.view({pooled.size(0), -1})), 1);
+  pooled = pooled.view({pooled.size(0), -1});
+  auto direction_probs = torch::softmax(direction_fc->forward(pooled), 1);
 
   return {from_probs.squeeze(0), direction_probs.squeeze(0)};
 }
@@ -63,9 +67,6 @@ select_action(torch::Tensor from_probs, torch::Tensor direction_probs) {
   auto direction_index = direction_probs.multinomial(1).item<int>();
   game::Step::Direction direction =
       static_cast<game::Step::Direction>(direction_index);
-
-  spdlog::debug("Selected action: from = ({}, {}), direction = {}", from.first,
-                from.second, direction);
 
   return {from, direction};
 }

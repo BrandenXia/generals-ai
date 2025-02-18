@@ -1,4 +1,5 @@
 #include "game.hpp"
+#include "device.hpp"
 
 #include <ATen/core/TensorBody.h>
 #include <ATen/ops/empty.h>
@@ -51,7 +52,8 @@ at::Tensor PlayerBoard::to_tensor() const {
   auto w = extent(1);
 
   auto tensor = at::empty({3, static_cast<long long>(extent(0)),
-                           static_cast<long long>(extent(1))});
+                           static_cast<long long>(extent(1))})
+                    .to(get_device());
   for (size_t i = 0; i < h; ++i)
     for (size_t j = 0; j < w; ++j) {
       const auto &tile = operator[](i, j);
@@ -66,8 +68,10 @@ at::Tensor PlayerBoard::to_tensor() const {
 at::Tensor PlayerBoard::action_mask() const {
   auto h = extent(0);
   auto w = extent(1);
-  at::Tensor mask = at::ones(
-      {static_cast<long long>(h), static_cast<long long>(w)}, at::kByte);
+  at::Tensor mask =
+      at::ones({static_cast<long long>(h), static_cast<long long>(w)},
+               at::kByte)
+          .to(get_device());
 
   for (size_t i = 0; i < h; ++i)
     for (size_t j = 0; j < w; ++j)
@@ -111,7 +115,7 @@ Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
 
   // generate generals, ensuring they are far enough from each other
   std::vector<std::pair<unsigned int, unsigned int>> general_positions;
-  const unsigned int min_distance = width * height / player_count / 10;
+  const unsigned int min_distance = width * height / player_count / 20;
   std::generate_n(std::back_inserter(general_positions), player_count, [&] {
     unsigned int pos, x, y;
     do {

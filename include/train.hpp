@@ -5,6 +5,8 @@ namespace generals::train {
 
 void interactive_train();
 
-}
+void train();
+
+} // namespace generals::train
 
 #endif
