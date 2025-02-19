@@ -17,6 +17,55 @@ namespace generals::train {
 
 inline const auto NETWORK_PATH = DATA_DIR / "network.pt";
 
+std::deque<double> reward_history;
+const int history_size = 100; // Number of episodes to average over
+
+double calculate_baseline() {
+  if (reward_history.empty()) return 0.0;
+  double sum =
+      std::accumulate(reward_history.begin(), reward_history.end(), 0.0);
+  return sum / reward_history.size();
+}
+
+eval::AlgoEval eval;
+at::Tensor loss_calculate(game::Player player, game::Game game,
+                          at::Tensor from_probs, at::Tensor direction_probs,
+                          game::Coord from, game::Step::Direction direction) {
+  auto device = get_device();
+
+  double reward = eval(game, player);
+
+  reward_history.push_back(reward);
+  if (reward_history.size() > history_size) { reward_history.pop_front(); }
+  auto reward_tensor =
+      torch::tensor({reward}, torch::TensorOptions().dtype(torch::kFloat32))
+          .to(device);
+
+  double baseline = calculate_baseline();
+  auto baseline_tensor =
+      torch::tensor({baseline}, torch::TensorOptions().dtype(torch::kFloat32))
+          .to(device);
+
+  auto advantage = reward_tensor - baseline_tensor;
+
+  auto flattened_from_probs = from_probs.view({-1});
+  auto selected_from_prob =
+      flattened_from_probs[from.first * from_probs.size(1) + from.second];
+  auto selected_direction_prob = direction_probs[static_cast<int>(direction)];
+
+  auto entropy =
+      -torch::sum(from_probs * torch::log(from_probs + 1e-10)) -
+      torch::sum(direction_probs * torch::log(direction_probs + 1e-10));
+  double entropy_coefficient = 0.01;
+
+  auto loss =
+      -(torch::log(selected_from_prob) + torch::log(selected_direction_prob)) *
+          advantage -
+      entropy_coefficient * entropy;
+
+  return loss;
+}
+
 void interactive_train() {
   using namespace generals;
 
@@ -30,7 +79,6 @@ void interactive_train() {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<unsigned int> map_size{18, 25};
-  eval::AlgoEval eval;
 
   spdlog::info("Loading network from {}", NETWORK_PATH);
   try {
@@ -55,20 +103,8 @@ void interactive_train() {
       game.apply_inplace({1, from, direction});
       game.next_turn();
 
-      double reward = eval(game, 1);
-      auto reward_tensor =
-          torch::tensor({reward}, torch::TensorOptions().dtype(torch::kFloat32))
-              .to(device);
-
-      auto flattened_from_probs = from_probs.view({-1});
-      auto selected_from_prob =
-          flattened_from_probs[from.first * from_probs.size(1) + from.second];
-      auto selected_direction_prob =
-          direction_probs[static_cast<int>(direction)];
-
-      auto loss = -(torch::log(selected_from_prob) +
-                    torch::log(selected_direction_prob)) *
-                  reward_tensor;
+      auto loss =
+          loss_calculate(1, game, from_probs, direction_probs, from, direction);
 
       optimizer.zero_grad();
       loss.backward();
@@ -96,8 +132,9 @@ void train(int game_nums, int max_ticks) {
 
   auto device = get_device();
   GeneralsNetwork network;
-  torch::optim::Adam optimizer(network->parameters(),
-                               torch::optim::AdamOptions(1e-3));
+  torch::optim::Adam optimizer(
+      network->parameters(),
+      torch::optim::AdamOptions(1e-3).weight_decay(1e-4));
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -117,31 +154,19 @@ void train(int game_nums, int max_ticks) {
     spdlog::info("Starting game {} with map size {}x{}", i, w, h);
 
     Game game{w, h, 2};
-    auto view_0 = game.player_view(0);
+    auto view_1 = game.player_view(1);
 
     while (game.tick < max_ticks && !game.is_over()) {
       auto [from_probs, direction_probs] =
-          network->forward(view_0.to_tensor(), view_0.action_mask());
+          network->forward(view_1.to_tensor(), view_1.action_mask());
       const auto &[from, direction] =
           select_action(from_probs, direction_probs);
 
-      game.apply_inplace({0, from, direction});
+      game.apply_inplace({1, from, direction});
       game.next_turn();
 
-      double reward = eval(game, 0);
-      auto reward_tensor =
-          torch::tensor({reward}, torch::TensorOptions().dtype(torch::kFloat32))
-              .to(device);
-
-      auto flattened_from_probs = from_probs.view({-1});
-      auto selected_from_prob =
-          flattened_from_probs[from.first * from_probs.size(1) + from.second];
-      auto selected_direction_prob =
-          direction_probs[static_cast<int>(direction)];
-
-      auto loss = -(torch::log(selected_from_prob) +
-                    torch::log(selected_direction_prob)) *
-                  reward_tensor;
+      auto loss =
+          loss_calculate(1, game, from_probs, direction_probs, from, direction);
 
       optimizer.zero_grad();
       loss.backward();

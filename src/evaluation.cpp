@@ -5,11 +5,17 @@ namespace generals::eval {
 double AlgoEval::operator()(const game::Game &game,
                             const game::Player &player) {
   double score = 0;
+  int enemy_army = 0;
+  int player_army = 0;
 
   for (const auto &tile : game.tiles)
-    if (tile.owner == player) score += tile.army * 0.1 + 1;
+    if (tile.owner == player) {
+      player_army += tile.army;
+      score += 0.01;
+    } else if (!tile.owner.has_value())
+      enemy_army += tile.army;
 
-  score += (game.total_player - game.current_player) * 100;
+  score += (player_army - enemy_army) * 0.01;
 
   return score;
 }
