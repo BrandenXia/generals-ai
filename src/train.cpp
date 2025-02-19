@@ -1,5 +1,7 @@
 #include "train.hpp"
 
+#include <indicators/cursor_control.hpp>
+#include <indicators/progress_bar.hpp>
 #include <random>
 #include <spdlog/fmt/std.h>
 #include <spdlog/spdlog.h>
@@ -123,7 +125,8 @@ void interactive_train(std::filesystem::path network_path) {
   }
 }
 
-void train(int game_nums, int max_ticks, std::filesystem::path network_path) {
+void train(int game_nums, int max_ticks, std::filesystem::path network_path,
+           game::Player player) {
   using namespace generals;
 
   spdlog::info("Starting training");
@@ -147,29 +150,45 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path) {
   }
   network->to(device);
 
+  indicators::show_console_cursor(false);
+  indicators::ProgressBar bar{
+      indicators::option::BarWidth{50},
+      indicators::option::Start{"["},
+      indicators::option::Fill{"="},
+      indicators::option::Lead{">"},
+      indicators::option::Remainder{" "},
+      indicators::option::End{"]"},
+      indicators::option::ForegroundColor{indicators::Color::yellow},
+      indicators::option::ShowPercentage{true},
+      indicators::option::ShowElapsedTime{true},
+      indicators::option::ShowRemainingTime{true},
+      indicators::option::MaxProgress{game_nums},
+      indicators::option::PrefixText{"Training "},
+  };
+
   for (int i = 0; i < game_nums; ++i) {
     const auto w = map_size(gen), h = map_size(gen);
-    spdlog::info("Starting game {} with map size {}x{}", i, w, h);
-
     Game game{w, h, 2};
-    auto view_1 = game.player_view(1);
+    auto view = game.player_view(player);
 
     while (game.tick < max_ticks && !game.is_over()) {
       auto [from_probs, direction_probs] =
-          network->forward(view_1.to_tensor(), view_1.action_mask());
+          network->forward(view.to_tensor(), view.action_mask());
       const auto &[from, direction] =
           select_action(from_probs, direction_probs);
 
-      game.apply_inplace({1, from, direction});
+      game.apply_inplace({player, from, direction});
       game.next_turn();
 
-      auto loss =
-          loss_calculate(1, game, from_probs, direction_probs, from, direction);
+      auto loss = loss_calculate(player, game, from_probs, direction_probs,
+                                 from, direction);
 
       optimizer.zero_grad();
       loss.backward();
       optimizer.step();
     }
+
+    bar.set_progress(i);
   }
 
   if (std::filesystem::create_directories(DATA_DIR))

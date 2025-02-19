@@ -11,7 +11,8 @@ int main(int argc, char *argv[]) {
         using T = std::decay_t<decltype(arg)>;
 
         if constexpr (std::is_same_v<T, cli::args::Train>)
-          train::train(arg.game_nums, arg.max_ticks, arg.network_path);
+          train::train(arg.game_nums, arg.max_ticks, arg.network_path,
+                       arg.player);
         else if constexpr (std::is_same_v<T, cli::args::Interactive>)
           train::interactive_train(arg.network_path);
       },

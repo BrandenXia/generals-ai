@@ -117,7 +117,7 @@ Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
 
   // generate generals, ensuring they are far enough from each other
   std::vector<std::pair<unsigned int, unsigned int>> general_positions;
-  const unsigned int min_distance = width * height / player_count / 20;
+  const unsigned int min_distance = width * height / player_count / 15;
   std::generate_n(std::back_inserter(general_positions), player_count, [&] {
     unsigned int pos, x, y;
     do {

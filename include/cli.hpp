@@ -5,6 +5,8 @@
 #include <filesystem>
 #include <variant>
 
+#include "game.hpp"
+
 namespace generals::cli {
 
 namespace args {
@@ -13,6 +15,7 @@ struct Train {
   int game_nums;
   int max_ticks;
   std::filesystem::path network_path;
+  game::Player player;
 };
 
 struct Interactive {

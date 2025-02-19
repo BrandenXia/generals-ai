@@ -3,11 +3,14 @@
 
 #include <filesystem>
 
+#include "game.hpp"
+
 namespace generals::train {
 
 void interactive_train(std::filesystem::path network_path);
 
-void train(int game_nums, int max_ticks, std::filesystem::path network_path);
+void train(int game_nums, int max_ticks, std::filesystem::path network_path,
+           game::Player player);
 
 } // namespace generals::train
 
