@@ -15,8 +15,6 @@
 
 namespace generals::train {
 
-inline const auto NETWORK_PATH = DATA_DIR / "network.pt";
-
 std::deque<double> reward_history;
 const int history_size = 100; // Number of episodes to average over
 
@@ -66,7 +64,7 @@ at::Tensor loss_calculate(game::Player player, game::Game game,
   return loss;
 }
 
-void interactive_train() {
+void interactive_train(std::filesystem::path network_path) {
   using namespace generals;
 
   spdlog::info("Starting interactive training");
@@ -80,9 +78,9 @@ void interactive_train() {
   std::mt19937 gen(rd());
   std::uniform_int_distribution<unsigned int> map_size{18, 25};
 
-  spdlog::info("Loading network from {}", NETWORK_PATH);
+  spdlog::info("Loading network from {}", network_path);
   try {
-    torch::load(network, NETWORK_PATH);
+    torch::load(network, network_path);
   } catch (const c10::Error &) {
     spdlog::info("Failed to load network, creating a new one");
   }
@@ -114,18 +112,18 @@ void interactive_train() {
     auto closed = interaction::interaction(game, interact);
 
     if (closed) {
-      spdlog::info("Window closed, saving network to {}", NETWORK_PATH);
+      spdlog::info("Window closed, saving network to {}", network_path);
 
       if (std::filesystem::create_directories(DATA_DIR))
         spdlog::info("Created directory {}", DATA_DIR);
 
-      torch::save(network, NETWORK_PATH);
+      torch::save(network, network_path);
       break;
     }
   }
 }
 
-void train(int game_nums, int max_ticks) {
+void train(int game_nums, int max_ticks, std::filesystem::path network_path) {
   using namespace generals;
 
   spdlog::info("Starting training");
@@ -141,9 +139,9 @@ void train(int game_nums, int max_ticks) {
   std::uniform_int_distribution<unsigned int> map_size{18, 25};
   eval::AlgoEval eval;
 
-  spdlog::info("Loading network from {}", NETWORK_PATH);
+  spdlog::info("Loading network from {}", network_path);
   try {
-    torch::load(network, NETWORK_PATH);
+    torch::load(network, network_path);
   } catch (const c10::Error &) {
     spdlog::info("Failed to load network, creating a new one");
   }
@@ -177,8 +175,8 @@ void train(int game_nums, int max_ticks) {
   if (std::filesystem::create_directories(DATA_DIR))
     spdlog::info("Created directory {}", DATA_DIR);
 
-  spdlog::info("Saving network to {}", NETWORK_PATH);
-  torch::save(network, NETWORK_PATH);
+  spdlog::info("Saving network to {}", network_path);
+  torch::save(network, network_path);
 }
 
 } // namespace generals::train
