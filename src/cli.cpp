@@ -35,6 +35,7 @@ CommandArgs parse(int argc, char *argv[]) {
       .help("The player the network will control")
       .scan<'d', int>()
       .metavar("PLAYER");
+  program.add_subparser(train_command);
 
   argparse::ArgumentParser interactive_command("interactive");
   interactive_command.add_description("Interactive training");
@@ -42,9 +43,49 @@ CommandArgs parse(int argc, char *argv[]) {
       .default_value("network")
       .help("Network name")
       .metavar("NETWORK_NAME");
-
-  program.add_subparser(train_command);
+  interactive_command.add_argument("-i", "--interact")
+      .default_value(0)
+      .help("The player the human will control")
+      .scan<'d', int>()
+      .metavar("INTERACT_PLAYER");
+  interactive_command.add_argument("-o", "--opponent")
+      .default_value(1)
+      .help("The player the AI will control")
+      .scan<'d', int>()
+      .metavar("OPPONENT");
   program.add_subparser(interactive_command);
+
+  argparse::ArgumentParser bidirectional_command("bidirectional");
+  bidirectional_command.add_description("Bidirectional training");
+  bidirectional_command.add_argument("-g", "--games")
+      .default_value(1000)
+      .help("Number of games to train on")
+      .scan<'d', int>()
+      .metavar("NUM_GAMES");
+  bidirectional_command.add_argument("-t", "--ticks")
+      .default_value(1000)
+      .help("Maximum number of ticks per game")
+      .scan<'d', int>()
+      .metavar("MAX_TICKS");
+  bidirectional_command.add_argument("-n1", "--network1")
+      .required()
+      .help("Network 1 name")
+      .metavar("NETWORK_NAME");
+  bidirectional_command.add_argument("-n2", "--network2")
+      .required()
+      .help("Network 2 name")
+      .metavar("NETWORK_NAME");
+  bidirectional_command.add_argument("-p1", "--player1")
+      .default_value(0)
+      .help("The player the first network will control")
+      .scan<'d', int>()
+      .metavar("PLAYER");
+  bidirectional_command.add_argument("-p2", "--player2")
+      .default_value(1)
+      .help("The player the second network will control")
+      .scan<'d', int>()
+      .metavar("PLAYER");
+  program.add_subparser(bidirectional_command);
 
   try {
     program.parse_args(argc, argv);
@@ -63,7 +104,23 @@ CommandArgs parse(int argc, char *argv[]) {
                        player};
   } else if (program.is_subcommand_used(interactive_command)) {
     auto network_path = interactive_command.get("--network");
-    return args::Interactive{to_network_path(network_path)};
+    auto interact_player = interactive_command.get<int>("--interact");
+    int opponent = interactive_command.get<int>("--opponent");
+    return args::Interactive{to_network_path(network_path), interact_player,
+                             opponent};
+  } else if (program.is_subcommand_used(bidirectional_command)) {
+    auto game_nums = bidirectional_command.get<int>("--games");
+    auto max_ticks = bidirectional_command.get<int>("--ticks");
+    auto n1_path = bidirectional_command.get("--network1");
+    auto n2_path = bidirectional_command.get("--network2");
+    auto n1_player = bidirectional_command.get<int>("--player1");
+    auto n2_player = bidirectional_command.get<int>("--player2");
+    return args::Bidirectional{game_nums,
+                               max_ticks,
+                               to_network_path(n1_path),
+                               to_network_path(n2_path),
+                               n1_player,
+                               n2_player};
   } else
     std::cerr << program;
 

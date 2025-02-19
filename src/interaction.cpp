@@ -6,7 +6,8 @@
 
 namespace generals::interaction {
 
-bool interaction(Game &game, std::function<void()> interact) {
+bool interaction(Game &game, game::Player player,
+                 std::function<void()> interact) {
   display::init_window(game);
 
   bool closed_by_player = false;
@@ -39,7 +40,7 @@ bool interaction(Game &game, std::function<void()> interact) {
       break;
     }
     if (direction.has_value()) {
-      game.apply_inplace({0, coord, direction.value()});
+      game.apply_inplace({player, coord, direction.value()});
       interact();
     }
 

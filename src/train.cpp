@@ -66,7 +66,8 @@ at::Tensor loss_calculate(game::Player player, game::Game game,
   return loss;
 }
 
-void interactive_train(std::filesystem::path network_path) {
+void interactive_train(std::filesystem::path network_path,
+                       game::Player interact_player, game::Player opponent) {
   using namespace generals;
 
   spdlog::info("Starting interactive training");
@@ -94,24 +95,24 @@ void interactive_train(std::filesystem::path network_path) {
                  game.board.extent(1));
 
     const auto interact = [&] {
-      const auto &player_board = game.player_view(1);
+      const auto &player_board = game.player_view(opponent);
       auto [from_probs, direction_probs] = network->forward(
           player_board.to_tensor(), player_board.action_mask());
       const auto &[from, direction] =
           select_action(from_probs, direction_probs);
 
-      game.apply_inplace({1, from, direction});
+      game.apply_inplace({opponent, from, direction});
       game.next_turn();
 
-      auto loss =
-          loss_calculate(1, game, from_probs, direction_probs, from, direction);
+      auto loss = loss_calculate(opponent, game, from_probs, direction_probs,
+                                 from, direction);
 
       optimizer.zero_grad();
       loss.backward();
       optimizer.step();
     };
 
-    auto closed = interaction::interaction(game, interact);
+    auto closed = interaction::interaction(game, interact_player, interact);
 
     if (closed) {
       spdlog::info("Window closed, saving network to {}", network_path);
@@ -140,7 +141,6 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path,
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<unsigned int> map_size{18, 25};
-  eval::AlgoEval eval;
 
   spdlog::info("Loading network from {}", network_path);
   try {
@@ -196,6 +196,101 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path,
 
   spdlog::info("Saving network to {}", network_path);
   torch::save(network, network_path);
+}
+
+void bidirectional_train(int game_nums, int max_ticks,
+                         std::filesystem::path n1_path,
+                         std::filesystem::path n2_path, game::Player n1_player,
+                         game::Player n2_player) {
+  using namespace generals;
+
+  spdlog::info("Starting bidirectional training");
+
+  auto device = get_device();
+  GeneralsNetwork n1, n2;
+  torch::optim::Adam n1_optimizer(
+      n1->parameters(), torch::optim::AdamOptions(1e-3).weight_decay(1e-4)),
+      n2_optimizer(n2->parameters(),
+                   torch::optim::AdamOptions(1e-3).weight_decay(1e-4));
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<unsigned int> map_size{18, 25};
+
+  spdlog::info("Loading network n1 from {}", n1_path);
+  try {
+    torch::load(n1, n1_path);
+  } catch (const c10::Error &) {
+    spdlog::info("Failed to load network n1, creating a new one");
+  }
+  spdlog::info("Loading network n2 from {}", n2_path);
+  try {
+    torch::load(n2, n2_path);
+  } catch (const c10::Error &) {
+    spdlog::info("Failed to load network n2, creating a new one");
+  }
+  n1->to(device);
+  n2->to(device);
+
+  indicators::show_console_cursor(false);
+  indicators::ProgressBar bar{
+      indicators::option::BarWidth{50},
+      indicators::option::Start{"["},
+      indicators::option::Fill{"="},
+      indicators::option::Lead{">"},
+      indicators::option::Remainder{" "},
+      indicators::option::End{"]"},
+      indicators::option::ForegroundColor{indicators::Color::yellow},
+      indicators::option::ShowPercentage{true},
+      indicators::option::ShowElapsedTime{true},
+      indicators::option::ShowRemainingTime{true},
+      indicators::option::MaxProgress{game_nums},
+      indicators::option::PrefixText{"Training "},
+  };
+
+  for (int i = 0; i < game_nums; ++i) {
+    const auto w = map_size(gen), h = map_size(gen);
+    Game game{w, h, 2};
+    auto view1 = game.player_view(n1_player),
+         view2 = game.player_view(n2_player);
+
+    while (game.tick < max_ticks && !game.is_over()) {
+      auto [from_probs1, direction_probs1] =
+          n1->forward(view1.to_tensor(), view1.action_mask());
+      const auto &[from1, direction1] =
+          select_action(from_probs1, direction_probs1);
+      game.apply_inplace({n1_player, from1, direction1});
+
+      auto [from_probs2, direction_probs2] =
+          n2->forward(view2.to_tensor(), view2.action_mask());
+      const auto &[from2, direction2] =
+          select_action(from_probs2, direction_probs2);
+      game.apply_inplace({n2_player, from2, direction2});
+
+      auto loss1 = loss_calculate(n1_player, game, from_probs1,
+                                  direction_probs1, from1, direction1),
+           loss2 = loss_calculate(n2_player, game, from_probs2,
+                                  direction_probs2, from2, direction2);
+
+      n1_optimizer.zero_grad();
+      loss1.backward();
+      n1_optimizer.step();
+      n2_optimizer.zero_grad();
+      loss2.backward();
+      n2_optimizer.step();
+    }
+
+    bar.set_progress(i);
+  }
+
+  if (std::filesystem::create_directories(DATA_DIR))
+    spdlog::info("Created directory {}", DATA_DIR);
+
+  spdlog::info("Saving network n1 to {}", n1_path);
+  torch::save(n1, n1_path);
+
+  spdlog::info("Saving network n2 to {}", n2_path);
+  torch::save(n2, n2_path);
 }
 
 } // namespace generals::train
