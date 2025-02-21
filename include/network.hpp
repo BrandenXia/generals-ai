@@ -14,6 +14,7 @@ namespace generals {
 
 struct GeneralsNetworkImpl : torch::nn::Module {
   torch::nn::Sequential conv_layers;
+  torch::nn::Sequential residual_block;
   torch::nn::Sequential from_fc;
   torch::nn::Sequential direction_fc;
 

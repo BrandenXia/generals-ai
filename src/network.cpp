@@ -21,9 +21,7 @@ namespace generals {
 GeneralsNetworkImpl::GeneralsNetworkImpl()
     : conv_layers(torch::nn::Sequential(
           torch::nn::Conv2d(
-              torch::nn::Conv2dOptions(game::type_count + 2, 32, 3)
-                  .stride(1)
-                  .padding(1)),
+              torch::nn::Conv2dOptions(game::type_count + 2, 32, 3).padding(1)),
           torch::nn::BatchNorm2d(32), torch::nn::ReLU(),
           torch::nn::Conv2d(torch::nn::Conv2dOptions(32, 64, 3).padding(1)),
           torch::nn::BatchNorm2d(64), torch::nn::ReLU(),
@@ -32,7 +30,16 @@ GeneralsNetworkImpl::GeneralsNetworkImpl()
           torch::nn::Conv2d(torch::nn::Conv2dOptions(128, 256, 3).padding(1)),
           torch::nn::BatchNorm2d(256), torch::nn::ReLU(),
           torch::nn::Conv2d(torch::nn::Conv2dOptions(256, 256, 3).padding(1)),
+          torch::nn::BatchNorm2d(256), torch::nn::ReLU(),
+          torch::nn::Conv2d(
+              torch::nn::Conv2dOptions(256, 256, 3).padding(2).dilation(2)),
           torch::nn::BatchNorm2d(256), torch::nn::ReLU())),
+
+      residual_block(torch::nn::Sequential(
+          torch::nn::Conv2d(torch::nn::Conv2dOptions(256, 256, 3).padding(1)),
+          torch::nn::BatchNorm2d(256), torch::nn::ReLU(),
+          torch::nn::Conv2d(torch::nn::Conv2dOptions(256, 256, 3).padding(1)),
+          torch::nn::BatchNorm2d(256))),
 
       from_fc(torch::nn::Sequential(
           torch::nn::Conv2d(torch::nn::Conv2dOptions(256, 1, 1)),
@@ -44,6 +51,7 @@ GeneralsNetworkImpl::GeneralsNetworkImpl()
           torch::nn::Softmax(torch::nn::SoftmaxOptions(0)))) {
 
   register_module("conv_layers", conv_layers);
+  register_module("residual_block", residual_block);
   register_module("from_fc", from_fc);
   register_module("direction_fc", direction_fc);
 }
@@ -54,6 +62,8 @@ GeneralsNetworkImpl::forward(torch::Tensor x, torch::Tensor action_mask) {
   action_mask = action_mask.unsqueeze(0);
 
   x = conv_layers->forward(x);
+  auto residual = x;
+  x = residual_block->forward(x) + residual;
 
   auto from_probs = from_fc->forward(x);
   from_probs = from_probs * action_mask;
