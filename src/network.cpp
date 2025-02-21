@@ -3,6 +3,7 @@
 #include <ATen/core/TensorBody.h>
 #include <ATen/ops/softmax.h>
 #include <c10/core/ScalarType.h>
+#include <iostream>
 #include <spdlog/spdlog.h>
 #include <torch/nn/functional/pooling.h>
 #include <torch/nn/modules/activation.h>
@@ -11,76 +12,70 @@
 #include <torch/nn/modules/conv.h>
 #include <torch/nn/modules/dropout.h>
 #include <torch/nn/modules/linear.h>
+#include <torch/nn/modules/pooling.h>
 #include <utility>
 
-#include "device.hpp"
 #include "game.hpp"
 
 namespace generals {
 
-GeneralsNetworkImpl::GeneralsNetworkImpl() : direction_fc(nullptr) {
-  auto device = get_device();
-  auto input_channel = game::type_count + 2;
+GeneralsNetworkImpl::GeneralsNetworkImpl()
+    : conv_layers(torch::nn::Sequential(
+          torch::nn::Conv2d(
+              torch::nn::Conv2dOptions(game::type_count + 2, 32, 3)
+                  .stride(1)
+                  .padding(1)),
+          torch::nn::BatchNorm2d(32), torch::nn::ReLU(),
+          torch::nn::Conv2d(torch::nn::Conv2dOptions(32, 64, 3).padding(1)),
+          torch::nn::BatchNorm2d(64), torch::nn::ReLU(),
+          torch::nn::Conv2d(torch::nn::Conv2dOptions(64, 128, 3).padding(1)),
+          torch::nn::BatchNorm2d(128), torch::nn::ReLU(),
+          torch::nn::Conv2d(torch::nn::Conv2dOptions(128, 256, 3).padding(1)),
+          torch::nn::BatchNorm2d(256), torch::nn::ReLU(),
+          torch::nn::Conv2d(torch::nn::Conv2dOptions(256, 256, 3).padding(1)),
+          torch::nn::BatchNorm2d(256), torch::nn::ReLU())),
 
-  conv_layers = torch::nn::Sequential(
-      torch::nn::Conv2d(
-          torch::nn::Conv2dOptions(input_channel, 32, 3).stride(1).padding(1)),
-      torch::nn::BatchNorm2d(32), torch::nn::ReLU(), torch::nn::Dropout(0.3),
-      torch::nn::Conv2d(
-          torch::nn::Conv2dOptions(32, 64, 3).stride(1).padding(1)),
-      torch::nn::BatchNorm2d(64), torch::nn::ReLU(), torch::nn::Dropout(0.3),
-      torch::nn::Conv2d(
-          torch::nn::Conv2dOptions(64, 128, 3).stride(1).padding(1)),
-      torch::nn::BatchNorm2d(128), torch::nn::ReLU(), torch::nn::Dropout(0.3));
-  conv_layers->to(device);
+      from_fc(torch::nn::Sequential(
+          torch::nn::Conv2d(torch::nn::Conv2dOptions(256, 1, 1)),
+          torch::nn::Softmax(torch::nn::SoftmaxOptions(1)))),
 
-  fc_layers = torch::nn::Sequential(
-      torch::nn::Linear(128, 64), torch::nn::ReLU(), torch::nn::Dropout(0.3),
-      torch::nn::Linear(64, 32), torch::nn::ReLU(), torch::nn::Dropout(0.3));
-  fc_layers->to(device);
+      direction_fc(torch::nn::Sequential(
+          torch::nn::Linear(256, 128), torch::nn::ReLU(),
+          torch::nn::Linear(128, 4),
+          torch::nn::Softmax(torch::nn::SoftmaxOptions(0)))) {
 
-  direction_fc = register_module("direction_linear", torch::nn::Linear(32, 4));
-  direction_fc->to(device);
+  register_module("conv_layers", conv_layers);
+  register_module("from_fc", from_fc);
+  register_module("direction_fc", direction_fc);
 }
 
 std::pair<at::Tensor, at::Tensor>
 GeneralsNetworkImpl::forward(torch::Tensor x, torch::Tensor action_mask) {
   x = x.unsqueeze(0);
-  action_mask = action_mask.unsqueeze(0).unsqueeze(1);
+  action_mask = action_mask.unsqueeze(0);
 
   x = conv_layers->forward(x);
 
-  action_mask = action_mask.expand_as(x);
-  x = x.masked_fill((1 - action_mask).to(torch::kBool), -1e9);
+  auto from_probs = from_fc->forward(x);
+  from_probs = from_probs * action_mask;
+  std::cout << from_probs << std::endl;
 
-  auto from_probs = torch::softmax(x.view({x.size(0), x.size(1), -1}), 2);
-  from_probs = from_probs.view({x.size(0), x.size(1), x.size(2), x.size(3)});
+  auto gap_features = torch::avg_pool2d(x, {x.size(2), x.size(3)}).squeeze();
+  auto direction_probs = direction_fc->forward(gap_features);
 
-  auto pooled = torch::nn::functional::adaptive_max_pool2d(x, {{1, 1}});
-  pooled = pooled.view({pooled.size(0), -1});
-
-  auto features = fc_layers->forward(pooled);
-  auto direction_probs = torch::softmax(direction_fc->forward(features), 1);
-
-  return {from_probs.squeeze(0), direction_probs.squeeze(0)};
+  return {from_probs, direction_probs};
 }
 
 std::pair<game::Coord, game::Step::Direction>
 select_action(torch::Tensor from_probs, torch::Tensor direction_probs) {
-  auto board_probs = from_probs.sum(0);
-  int m = board_probs.size(1);
+  auto flattened_from_idx = from_probs.argmax();
+  auto idx = flattened_from_idx.item<int>();
+  unsigned int m = from_probs.size(3);
+  game::Coord from{idx / m, idx % m};
 
-  board_probs = torch::softmax(board_probs.view({-1}), 0);
+  int direction = direction_probs.argmax().item<int>();
 
-  auto from_index = board_probs.multinomial(1).item<int>();
-
-  game::Coord from = {from_index / m, from_index % m};
-
-  auto direction_index = direction_probs.multinomial(1).item<int>();
-  game::Step::Direction direction =
-      static_cast<game::Step::Direction>(direction_index);
-
-  return {from, direction};
+  return {from, static_cast<game::Step::Direction>(direction)};
 }
 
 } // namespace generals

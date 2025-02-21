@@ -6,6 +6,7 @@
 #include <spdlog/fmt/std.h>
 #include <spdlog/spdlog.h>
 #include <torch/optim/adam.h>
+#include <torch/optim/schedulers/step_lr.h>
 #include <torch/serialize.h>
 
 #include "device.hpp"
@@ -20,7 +21,7 @@ namespace generals::train {
 std::deque<double> reward_history;
 const int history_size = 100; // Number of episodes to average over
 
-double calculate_baseline() {
+inline double calculate_baseline() {
   if (reward_history.empty()) return 0.0;
   double sum =
       std::accumulate(reward_history.begin(), reward_history.end(), 0.0);
@@ -28,9 +29,9 @@ double calculate_baseline() {
 }
 
 eval::AlgoEval eval;
-at::Tensor loss_calculate(game::Player player, game::Game game,
-                          at::Tensor from_probs, at::Tensor direction_probs,
-                          game::Coord from, game::Step::Direction direction) {
+inline at::Tensor criterion(game::Player player, game::Game game,
+                            at::Tensor from_probs, at::Tensor direction_probs,
+                            game::Coord from, game::Step::Direction direction) {
   auto device = get_device();
 
   double reward = eval(game, player);
@@ -76,6 +77,7 @@ void interactive_train(std::filesystem::path network_path,
   GeneralsNetwork network;
   torch::optim::Adam optimizer(network->parameters(),
                                torch::optim::AdamOptions(1e-3));
+  torch::optim::StepLR scheduler{optimizer, 10, 0.1};
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -104,13 +106,15 @@ void interactive_train(std::filesystem::path network_path,
       game.apply_inplace({opponent, from, direction});
       game.next_turn();
 
-      auto loss = loss_calculate(opponent, game, from_probs, direction_probs,
-                                 from, direction);
+      auto loss = criterion(opponent, game, from_probs, direction_probs, from,
+                            direction);
 
       optimizer.zero_grad();
       loss.backward();
       optimizer.step();
     };
+
+    scheduler.step();
 
     auto closed = interaction::interaction(game, interact_player, interact);
 
@@ -137,6 +141,7 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path,
   torch::optim::Adam optimizer(
       network->parameters(),
       torch::optim::AdamOptions(1e-3).weight_decay(1e-4));
+  torch::optim::StepLR scheduler{optimizer, 10, 0.1};
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -180,13 +185,15 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path,
       game.apply_inplace({player, from, direction});
       game.next_turn();
 
-      auto loss = loss_calculate(player, game, from_probs, direction_probs,
-                                 from, direction);
+      auto loss =
+          criterion(player, game, from_probs, direction_probs, from, direction);
 
       optimizer.zero_grad();
       loss.backward();
       optimizer.step();
     }
+
+    scheduler.step();
 
     bar.set_progress(i);
   }
@@ -212,6 +219,8 @@ void bidirectional_train(int game_nums, int max_ticks,
       n1->parameters(), torch::optim::AdamOptions(1e-3).weight_decay(1e-4)),
       n2_optimizer(n2->parameters(),
                    torch::optim::AdamOptions(1e-3).weight_decay(1e-4));
+  torch::optim::StepLR n1_scheduler{n1_optimizer, 10, 0.1},
+      n2_scheduler{n2_optimizer, 10, 0.1};
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -267,10 +276,10 @@ void bidirectional_train(int game_nums, int max_ticks,
           select_action(from_probs2, direction_probs2);
       game.apply_inplace({n2_player, from2, direction2});
 
-      auto loss1 = loss_calculate(n1_player, game, from_probs1,
-                                  direction_probs1, from1, direction1),
-           loss2 = loss_calculate(n2_player, game, from_probs2,
-                                  direction_probs2, from2, direction2);
+      auto loss1 = criterion(n1_player, game, from_probs1, direction_probs1,
+                             from1, direction1),
+           loss2 = criterion(n2_player, game, from_probs2, direction_probs2,
+                             from2, direction2);
 
       n1_optimizer.zero_grad();
       loss1.backward();
@@ -279,6 +288,9 @@ void bidirectional_train(int game_nums, int max_ticks,
       loss2.backward();
       n2_optimizer.step();
     }
+
+    n1_scheduler.step();
+    n2_scheduler.step();
 
     bar.set_progress(i);
   }

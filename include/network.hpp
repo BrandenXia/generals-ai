@@ -4,6 +4,7 @@
 #include <ATen/core/TensorBody.h>
 #include <torch/nn/module.h>
 #include <torch/nn/modules/container/sequential.h>
+#include <torch/nn/modules/conv.h>
 #include <torch/nn/modules/linear.h>
 #include <utility>
 
@@ -13,8 +14,8 @@ namespace generals {
 
 struct GeneralsNetworkImpl : torch::nn::Module {
   torch::nn::Sequential conv_layers;
-  torch::nn::Sequential fc_layers;
-  torch::nn::Linear direction_fc;
+  torch::nn::Sequential from_fc;
+  torch::nn::Sequential direction_fc;
 
   GeneralsNetworkImpl();
   std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x,
