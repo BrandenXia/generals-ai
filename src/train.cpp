@@ -5,7 +5,7 @@
 #include <random>
 #include <spdlog/fmt/std.h>
 #include <spdlog/spdlog.h>
-#include <torch/optim/adam.h>
+#include <torch/optim/adamw.h>
 #include <torch/optim/schedulers/step_lr.h>
 #include <torch/serialize.h>
 
@@ -76,8 +76,8 @@ void interactive_train(std::filesystem::path network_path,
 
   auto device = get_device();
   GeneralsNetwork network;
-  torch::optim::Adam optimizer(network->parameters(),
-                               torch::optim::AdamOptions(1e-3));
+  torch::optim::AdamW optimizer(network->parameters(),
+                                torch::optim::AdamWOptions(1e-3));
   torch::optim::StepLR scheduler{optimizer, 10, 0.1};
 
   std::random_device rd;
@@ -139,9 +139,9 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path,
 
   auto device = get_device();
   GeneralsNetwork network;
-  torch::optim::Adam optimizer(
+  torch::optim::AdamW optimizer(
       network->parameters(),
-      torch::optim::AdamOptions(1e-3).weight_decay(1e-4));
+      torch::optim::AdamWOptions(1e-3).weight_decay(1e-4));
   torch::optim::StepLR scheduler{optimizer, 10, 0.1};
 
   std::random_device rd;
@@ -216,10 +216,10 @@ void bidirectional_train(int game_nums, int max_ticks,
 
   auto device = get_device();
   GeneralsNetwork n1, n2;
-  torch::optim::Adam n1_optimizer(
-      n1->parameters(), torch::optim::AdamOptions(1e-3).weight_decay(1e-4)),
+  torch::optim::AdamW n1_optimizer(
+      n1->parameters(), torch::optim::AdamWOptions(1e-3).weight_decay(1e-4)),
       n2_optimizer(n2->parameters(),
-                   torch::optim::AdamOptions(1e-3).weight_decay(1e-4));
+                   torch::optim::AdamWOptions(1e-3).weight_decay(1e-4));
   torch::optim::StepLR n1_scheduler{n1_optimizer, 10, 0.1},
       n2_scheduler{n2_optimizer, 10, 0.1};
 
