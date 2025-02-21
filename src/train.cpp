@@ -51,18 +51,19 @@ inline at::Tensor criterion(game::Player player, game::Game game,
 
   auto flattened_from_probs = from_probs.view({-1});
   auto selected_from_prob =
-      flattened_from_probs[from.first * from_probs.size(1) + from.second];
+      flattened_from_probs[from.first * from_probs.size(3) + from.second];
   auto selected_direction_prob = direction_probs[static_cast<int>(direction)];
 
   auto entropy =
-      -torch::sum(from_probs * torch::log(from_probs + 1e-10)) -
-      torch::sum(direction_probs * torch::log(direction_probs + 1e-10));
+      -torch::sum(from_probs * torch::log(from_probs + 1e-8)) -
+      torch::sum(direction_probs * torch::log(direction_probs + 1e-8));
+
   double entropy_coefficient = 0.01;
 
-  auto loss =
-      -(torch::log(selected_from_prob) + torch::log(selected_direction_prob)) *
-          advantage -
-      entropy_coefficient * entropy;
+  auto loss = -(torch::log(selected_from_prob + 1e-8) +
+                torch::log(selected_direction_prob + 1e-8)) *
+                  advantage.detach() -
+              entropy_coefficient * entropy;
 
   return loss;
 }

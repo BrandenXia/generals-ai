@@ -3,7 +3,6 @@
 #include <ATen/core/TensorBody.h>
 #include <ATen/ops/softmax.h>
 #include <c10/core/ScalarType.h>
-#include <iostream>
 #include <spdlog/spdlog.h>
 #include <torch/nn/functional/pooling.h>
 #include <torch/nn/modules/activation.h>
@@ -58,7 +57,6 @@ GeneralsNetworkImpl::forward(torch::Tensor x, torch::Tensor action_mask) {
 
   auto from_probs = from_fc->forward(x);
   from_probs = from_probs * action_mask;
-  std::cout << from_probs << std::endl;
 
   auto gap_features = torch::avg_pool2d(x, {x.size(2), x.size(3)}).squeeze();
   auto direction_probs = direction_fc->forward(gap_features);
