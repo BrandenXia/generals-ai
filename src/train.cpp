@@ -198,6 +198,7 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path,
 
     bar.set_progress(i);
   }
+  indicators::show_console_cursor(true);
 
   if (std::filesystem::create_directories(DATA_DIR))
     spdlog::info("Created directory {}", DATA_DIR);
@@ -295,6 +296,7 @@ void bidirectional_train(int game_nums, int max_ticks,
 
     bar.set_progress(i);
   }
+  indicators::show_console_cursor(true);
 
   if (std::filesystem::create_directories(DATA_DIR))
     spdlog::info("Created directory {}", DATA_DIR);
