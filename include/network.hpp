@@ -13,12 +13,19 @@
 namespace generals {
 
 struct GeneralsNetworkImpl : torch::nn::Module {
+  game::Player player;
+  std::pair<int, int> max_size;
+
   torch::nn::Sequential conv_layers;
   torch::nn::Sequential residual_block;
   torch::nn::Sequential from_fc;
   torch::nn::Sequential direction_fc;
 
-  GeneralsNetworkImpl();
+  void save(torch::serialize::OutputArchive &archive) const;
+  void load(torch::serialize::InputArchive &archive);
+
+  GeneralsNetworkImpl() = default;
+  GeneralsNetworkImpl(game::Player player, std::pair<int, int> max_size);
   std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x,
                                                   torch::Tensor action_mask);
 };
