@@ -86,6 +86,8 @@ using game::Game, game::PlayerBoard;
 
 }
 
+std::ostream &operator<<(std::ostream &os, generals::game::Player player);
+
 std::ostream &operator<<(std::ostream &os, generals::game::Tile tile);
 
 template <typename T>

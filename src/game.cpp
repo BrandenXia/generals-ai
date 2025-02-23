@@ -207,6 +207,11 @@ void Game::next_turn() {
 
 } // namespace generals::game
 
+std::ostream &operator<<(std::ostream &os, generals::game::Player player) {
+  if (!player.has_value()) return os << '?';
+  return os << static_cast<int>(player.value());
+}
+
 inline constexpr std::array<char, 6> symbols = {' ', 'M', 'C', 'G', '?', 'X'};
 
 #define EXPAND_COLOR(bg_color) termcolor::on_##bg_color<char>
