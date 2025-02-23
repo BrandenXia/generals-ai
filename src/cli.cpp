@@ -10,12 +10,9 @@
       .help("Network name")                                                    \
       .metavar("NETWORK_NAME");
 
-#define ADD_NETWORK_REQUIRED_1 required()
-#define ADD_NETWORK_REQUIRED_0 default_value("network")
-
-#define ADD_NETWORK_ARG(name, required)                                        \
+#define ADD_NETWORK_ARG(name)                                                  \
   name##_cmd.add_argument("-n", "--network")                                   \
-      .ADD_NETWORK_REQUIRED_##required.help("Network name")                    \
+      .default_value("network")                                                \
       .metavar("NETWORK_NAME");
 
 #define ADD_GAME_NUM(name)                                                     \
@@ -76,12 +73,12 @@ CommandArgs parse(int argc, char *argv[]) {
   DESCRIBE(train, "Train the AI");
   ADD_GAME_NUM(train);
   ADD_MAX_TICK(train);
-  ADD_NETWORK_ARG(train, 0);
+  ADD_NETWORK_ARG(train);
   SUBPARSER(train);
 
   ArgumentParser interactive_cmd("interactive");
   DESCRIBE(interactive, "Train the AI interactively");
-  ADD_NETWORK_ARG(interactive, 0);
+  ADD_NETWORK_ARG(interactive);
   SUBPARSER(interactive);
 
   ArgumentParser bidirectional_cmd("bidirectional");
