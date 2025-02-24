@@ -12,8 +12,9 @@
 
 #define ADD_NETWORK_ARG(name)                                                  \
   name##_cmd.add_argument("-n", "--network")                                   \
-      .default_value("network")                                                \
-      .metavar("NETWORK_NAME");
+      .help("Network name")                                                    \
+      .metavar("NETWORK_NAME")                                                 \
+      .required();
 
 #define ADD_GAME_NUM(name)                                                     \
   name##_cmd.add_argument("-g", "--games")                                     \
