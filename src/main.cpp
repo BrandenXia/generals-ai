@@ -16,15 +16,13 @@ int main(int argc, char *argv[]) {
         using T = std::decay_t<decltype(arg)>;
 
         if SAME_V (Create) {
-          GeneralsNetwork network(arg.player, arg.max_size);
+          GeneralsNetwork network{arg.player, arg.max_size};
           torch::save(network, arg.network_path);
-        } else if SAME_V (Info) {
-          GeneralsNetwork network;
-          torch::load(network, arg.network_path);
-          std::cout << "Player: " << network->player << std::endl;
-          std::cout << "Max size: " << network->max_size.first << "x"
-                    << network->max_size.second << std::endl;
-        } else if SAME_V (Train)
+          std::cout << "Network created and saved to " << arg.network_path
+                    << std::endl;
+        } else if SAME_V (Info)
+          std::cout << network::info(arg.network_path) << std::endl;
+        else if SAME_V (Train)
           train::train(arg.game_nums, arg.max_ticks, arg.network_path);
         else if SAME_V (Interactive)
           train::interactive_train(arg.network_path);

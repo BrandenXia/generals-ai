@@ -8,9 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <functional>
 #include <random>
-#include <termcolor/termcolor.hpp>
 #include <utility>
 
 namespace generals::game {
@@ -206,29 +204,3 @@ void Game::next_turn() {
 }
 
 } // namespace generals::game
-
-std::ostream &operator<<(std::ostream &os, generals::game::Player player) {
-  if (!player.has_value()) return os << '?';
-  return os << static_cast<int>(player.value());
-}
-
-inline constexpr std::array<char, 6> symbols = {' ', 'M', 'C', 'G', '?', 'X'};
-
-#define EXPAND_COLOR(bg_color) termcolor::on_##bg_color<char>
-inline const std::array<std::function<std::ostream &(std::ostream &)>, 6>
-    colors = {
-        EXPAND_COLOR(red),  EXPAND_COLOR(green),   EXPAND_COLOR(yellow),
-        EXPAND_COLOR(blue), EXPAND_COLOR(magenta), EXPAND_COLOR(cyan),
-};
-#undef EXPAND_COLOR
-
-std::ostream &operator<<(std::ostream &os, generals::game::Tile tile) {
-  bool has_owner = tile.owner.has_value();
-  if (has_owner) {
-    colors[tile.owner.value()](os);
-    os << termcolor::grey;
-  }
-  os << symbols[static_cast<int>(tile.type)];
-  if (has_owner) termcolor::reset(os);
-  return os;
-}

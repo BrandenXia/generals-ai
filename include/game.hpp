@@ -4,10 +4,10 @@
 #include <ATen/core/TensorBody.h>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <magic_enum/magic_enum.hpp>
 #include <mdspan>
 #include <optional>
-#include <ostream>
 #include <vector>
 
 namespace generals::game {
@@ -86,20 +86,18 @@ using game::Game, game::PlayerBoard;
 
 }
 
-std::ostream &operator<<(std::ostream &os, generals::game::Player player);
+template <>
+struct std::formatter<generals::game::Player, char> {
+  template <class ParseContext>
+  constexpr auto parse(ParseContext &ctx) {
+    return ctx.begin();
+  }
 
-std::ostream &operator<<(std::ostream &os, generals::game::Tile tile);
-
-template <typename T>
-  requires std::is_same_v<T, generals::game::Board> ||
-           std::is_same_v<T, generals::PlayerBoard>
-std::ostream &operator<<(std::ostream &os, T board) {
-  const auto h = board.extent(0);
-  const auto w = board.extent(1);
-  for (std::size_t i = 0; i < h; ++i)
-    for (std::size_t j = 0; j < w; ++j)
-      os << board[i, j] << (j == w - 1 ? '\n' : ' ');
-  return os;
-}
+  template <class FormatContext>
+  auto format(generals::game::Player player, FormatContext &ctx) const {
+    return std::format_to(ctx.out(), "{}",
+                          player.has_value() ? static_cast<int>(*player) : -1);
+  }
+};
 
 #endif
