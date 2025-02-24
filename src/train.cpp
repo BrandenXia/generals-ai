@@ -10,7 +10,6 @@
 #include <torch/serialize.h>
 
 #include "device.hpp"
-#include "dirs.hpp"
 #include "evaluation.hpp"
 #include "game.hpp"
 #include "interaction.hpp"
@@ -68,8 +67,7 @@ inline at::Tensor criterion(game::Player player, game::Game game,
   return loss;
 }
 
-void interactive_train(std::filesystem::path network_path,
-                       game::Player interact_player, game::Player opponent) {
+void interactive_train(const std::filesystem::path &network_path) {
   using namespace generals;
 
   spdlog::info("Starting interactive training");
@@ -88,9 +86,15 @@ void interactive_train(std::filesystem::path network_path,
   try {
     torch::load(network, network_path);
   } catch (const c10::Error &) {
-    spdlog::info("Failed to load network, creating a new one");
+    spdlog::error("Failed to load network");
+    return;
   }
+  network->to(device);
 
+  auto opponent = network->player;
+  auto interact_player = opponent == 1 ? 0 : 1;
+
+  bool closed = false;
   while (true) {
     Game game{map_size(gen), map_size(gen), 2};
 
@@ -102,7 +106,7 @@ void interactive_train(std::filesystem::path network_path,
       auto [from_probs, direction_probs] = network->forward(
           player_board.to_tensor(), player_board.action_mask());
       const auto &[from, direction] =
-          select_action(from_probs, direction_probs);
+          network::select_action(from_probs, direction_probs);
 
       game.apply_inplace({opponent, from, direction});
       game.next_turn();
@@ -117,22 +121,19 @@ void interactive_train(std::filesystem::path network_path,
 
     scheduler.step();
 
-    auto closed = interaction::interaction(game, interact_player, interact);
-
-    if (closed) {
-      spdlog::info("Window closed, saving network to {}", network_path);
-
-      if (std::filesystem::create_directories(DATA_DIR))
-        spdlog::info("Created directory {}", DATA_DIR);
-
-      torch::save(network, network_path);
+    if ((closed = interaction::interaction(game, interact_player, interact)))
       break;
-    }
+  }
+
+  if (closed) {
+    spdlog::info("Window closed, saving network to {}", network_path);
+
+    torch::save(network, network_path);
   }
 }
 
-void train(int game_nums, int max_ticks, std::filesystem::path network_path,
-           game::Player player) {
+void train(int game_nums, int max_ticks,
+           const std::filesystem::path &network_path) {
   using namespace generals;
 
   spdlog::info("Starting training");
@@ -152,9 +153,12 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path,
   try {
     torch::load(network, network_path);
   } catch (const c10::Error &) {
-    spdlog::info("Failed to load network, creating a new one");
+    spdlog::error("Failed to load network");
+    return;
   }
   network->to(device);
+
+  auto player = network->player;
 
   indicators::show_console_cursor(false);
   indicators::ProgressBar bar{
@@ -181,7 +185,7 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path,
       auto [from_probs, direction_probs] =
           network->forward(view.to_tensor(), view.action_mask());
       const auto &[from, direction] =
-          select_action(from_probs, direction_probs);
+          network::select_action(from_probs, direction_probs);
 
       game.apply_inplace({player, from, direction});
       game.next_turn();
@@ -200,17 +204,13 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path,
   }
   indicators::show_console_cursor(true);
 
-  if (std::filesystem::create_directories(DATA_DIR))
-    spdlog::info("Created directory {}", DATA_DIR);
-
   spdlog::info("Saving network to {}", network_path);
   torch::save(network, network_path);
 }
 
 void bidirectional_train(int game_nums, int max_ticks,
-                         std::filesystem::path n1_path,
-                         std::filesystem::path n2_path, game::Player n1_player,
-                         game::Player n2_player) {
+                         const std::filesystem::path &n1_path,
+                         const std::filesystem::path &n2_path) {
   using namespace generals;
 
   spdlog::info("Starting bidirectional training");
@@ -232,16 +232,20 @@ void bidirectional_train(int game_nums, int max_ticks,
   try {
     torch::load(n1, n1_path);
   } catch (const c10::Error &) {
-    spdlog::info("Failed to load network n1, creating a new one");
+    spdlog::error("Failed to load network n1");
+    return;
   }
   spdlog::info("Loading network n2 from {}", n2_path);
   try {
     torch::load(n2, n2_path);
   } catch (const c10::Error &) {
-    spdlog::info("Failed to load network n2, creating a new one");
+    spdlog::error("Failed to load network n2");
+    return;
   }
   n1->to(device);
   n2->to(device);
+
+  auto n1_player = n1->player, n2_player = n2->player;
 
   indicators::show_console_cursor(false);
   indicators::ProgressBar bar{
@@ -269,13 +273,13 @@ void bidirectional_train(int game_nums, int max_ticks,
       auto [from_probs1, direction_probs1] =
           n1->forward(view1.to_tensor(), view1.action_mask());
       const auto &[from1, direction1] =
-          select_action(from_probs1, direction_probs1);
+          network::select_action(from_probs1, direction_probs1);
       game.apply_inplace({n1_player, from1, direction1});
 
       auto [from_probs2, direction_probs2] =
           n2->forward(view2.to_tensor(), view2.action_mask());
       const auto &[from2, direction2] =
-          select_action(from_probs2, direction_probs2);
+          network::select_action(from_probs2, direction_probs2);
       game.apply_inplace({n2_player, from2, direction2});
 
       auto loss1 = criterion(n1_player, game, from_probs1, direction_probs1,
@@ -297,9 +301,6 @@ void bidirectional_train(int game_nums, int max_ticks,
     bar.set_progress(i);
   }
   indicators::show_console_cursor(true);
-
-  if (std::filesystem::create_directories(DATA_DIR))
-    spdlog::info("Created directory {}", DATA_DIR);
 
   spdlog::info("Saving network n1 to {}", n1_path);
   torch::save(n1, n1_path);

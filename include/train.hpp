@@ -3,20 +3,16 @@
 
 #include <filesystem>
 
-#include "game.hpp"
-
 namespace generals::train {
 
-void interactive_train(std::filesystem::path network_path,
-                       game::Player interact_player, game::Player opponent);
+void interactive_train(const std::filesystem::path &network_path);
 
-void train(int game_nums, int max_ticks, std::filesystem::path network_path,
-           game::Player player);
+void train(int game_nums, int max_ticks,
+           const std::filesystem::path &network_path);
 
 void bidirectional_train(int game_nums, int max_ticks,
-                         std::filesystem::path n1_path,
-                         std::filesystem::path n2_path, game::Player n1_player,
-                         game::Player n2_player);
+                         const std::filesystem::path &n1_path,
+                         const std::filesystem::path &n2_path);
 
 } // namespace generals::train
 
