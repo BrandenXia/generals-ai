@@ -80,8 +80,8 @@ at::Tensor PlayerBoard::action_mask() const {
   return mask;
 }
 
-unsigned int manhattanDistance(unsigned int x1, unsigned int y1,
-                               unsigned int x2, unsigned int y2) {
+inline unsigned int manhattanDistance(unsigned int x1, unsigned int y1,
+                                      unsigned int x2, unsigned int y2) {
   return std::abs(static_cast<int>(x1) - static_cast<int>(x2)) +
          std::abs(static_cast<int>(y1) - static_cast<int>(y2));
 }
@@ -114,19 +114,19 @@ Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
     tiles[map_dist(gen)] = Tile{Type::City, std::nullopt, army_n_dist(gen)};
 
   // generate generals, ensuring they are far enough from each other
-  std::vector<std::pair<unsigned int, unsigned int>> general_positions;
+  generals_pos.reserve(player_count);
   const unsigned int min_distance = width * height / player_count / 15;
-  std::generate_n(std::back_inserter(general_positions), player_count, [&] {
+  std::generate_n(std::back_inserter(generals_pos), player_count, [&] {
     unsigned int pos, x, y;
     do {
       pos = map_dist(gen);
       x = pos % width;
       y = pos / width;
-    } while (std::ranges::any_of(general_positions, [&](const auto &p) {
+    } while (std::ranges::any_of(generals_pos, [&](const auto &p) {
       return manhattanDistance(x, y, p.first, p.second) < min_distance;
     }));
 
-    tiles[pos] = Tile{Type::General, general_positions.size(), 1};
+    tiles[pos] = Tile{Type::General, generals_pos.size(), 1};
     return std::make_pair(x, y);
   });
 

@@ -67,6 +67,7 @@ struct Game {
   unsigned int tick;
   unsigned short total_player;
   unsigned short current_player;
+  std::vector<Coord> generals_pos;
 
   explicit Game(unsigned int width, unsigned int height,
                 unsigned int player_count);
