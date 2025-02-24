@@ -67,7 +67,7 @@ inline at::Tensor criterion(game::Player player, game::Game game,
   return loss;
 }
 
-void interactive_train(std::filesystem::path network_path) {
+void interactive_train(const std::filesystem::path &network_path) {
   using namespace generals;
 
   spdlog::info("Starting interactive training");
@@ -106,7 +106,7 @@ void interactive_train(std::filesystem::path network_path) {
       auto [from_probs, direction_probs] = network->forward(
           player_board.to_tensor(), player_board.action_mask());
       const auto &[from, direction] =
-          select_action(from_probs, direction_probs);
+          network::select_action(from_probs, direction_probs);
 
       game.apply_inplace({opponent, from, direction});
       game.next_turn();
@@ -132,7 +132,8 @@ void interactive_train(std::filesystem::path network_path) {
   }
 }
 
-void train(int game_nums, int max_ticks, std::filesystem::path network_path) {
+void train(int game_nums, int max_ticks,
+           const std::filesystem::path &network_path) {
   using namespace generals;
 
   spdlog::info("Starting training");
@@ -184,7 +185,7 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path) {
       auto [from_probs, direction_probs] =
           network->forward(view.to_tensor(), view.action_mask());
       const auto &[from, direction] =
-          select_action(from_probs, direction_probs);
+          network::select_action(from_probs, direction_probs);
 
       game.apply_inplace({player, from, direction});
       game.next_turn();
@@ -208,8 +209,8 @@ void train(int game_nums, int max_ticks, std::filesystem::path network_path) {
 }
 
 void bidirectional_train(int game_nums, int max_ticks,
-                         std::filesystem::path n1_path,
-                         std::filesystem::path n2_path) {
+                         const std::filesystem::path &n1_path,
+                         const std::filesystem::path &n2_path) {
   using namespace generals;
 
   spdlog::info("Starting bidirectional training");
@@ -272,13 +273,13 @@ void bidirectional_train(int game_nums, int max_ticks,
       auto [from_probs1, direction_probs1] =
           n1->forward(view1.to_tensor(), view1.action_mask());
       const auto &[from1, direction1] =
-          select_action(from_probs1, direction_probs1);
+          network::select_action(from_probs1, direction_probs1);
       game.apply_inplace({n1_player, from1, direction1});
 
       auto [from_probs2, direction_probs2] =
           n2->forward(view2.to_tensor(), view2.action_mask());
       const auto &[from2, direction2] =
-          select_action(from_probs2, direction_probs2);
+          network::select_action(from_probs2, direction_probs2);
       game.apply_inplace({n2_player, from2, direction2});
 
       auto loss1 = criterion(n1_player, game, from_probs1, direction_probs1,

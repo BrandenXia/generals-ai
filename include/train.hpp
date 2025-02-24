@@ -5,13 +5,14 @@
 
 namespace generals::train {
 
-void interactive_train(std::filesystem::path network_path);
+void interactive_train(const std::filesystem::path &network_path);
 
-void train(int game_nums, int max_ticks, std::filesystem::path network_path);
+void train(int game_nums, int max_ticks,
+           const std::filesystem::path &network_path);
 
 void bidirectional_train(int game_nums, int max_ticks,
-                         std::filesystem::path n1_path,
-                         std::filesystem::path n2_path);
+                         const std::filesystem::path &n1_path,
+                         const std::filesystem::path &n2_path);
 
 } // namespace generals::train
 

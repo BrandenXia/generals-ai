@@ -3,6 +3,7 @@
 #include <ATen/core/TensorBody.h>
 #include <ATen/ops/softmax.h>
 #include <c10/core/ScalarType.h>
+#include <format>
 #include <spdlog/spdlog.h>
 #include <torch/nn/functional/pooling.h>
 #include <torch/nn/modules/activation.h>
@@ -12,12 +13,13 @@
 #include <torch/nn/modules/dropout.h>
 #include <torch/nn/modules/linear.h>
 #include <torch/nn/modules/pooling.h>
+#include <torch/serialize.h>
 #include <torch/serialize/input-archive.h>
 #include <utility>
 
 #include "game.hpp"
 
-namespace generals {
+namespace generals::network {
 
 inline constexpr auto ARCHIVE_PLAYER_KEY = "player";
 inline constexpr auto ARCHIVE_MAX_WIDTH_KEY = "max_width";
@@ -42,6 +44,9 @@ void GeneralsNetworkImpl::load(torch::serialize::InputArchive &archive) {
   archive.read(ARCHIVE_MAX_HEIGHT_KEY, max_height_val);
   max_size = {max_width_val.toInt(), max_height_val.toInt()};
 }
+
+GeneralsNetworkImpl::GeneralsNetworkImpl()
+    : GeneralsNetworkImpl(std::nullopt, {0, 0}) {}
 
 GeneralsNetworkImpl::GeneralsNetworkImpl(game::Player p, std::pair<int, int> s)
     : player(p), max_size(s),
@@ -112,4 +117,14 @@ select_action(torch::Tensor from_probs, torch::Tensor direction_probs) {
   return {from, static_cast<game::Step::Direction>(direction)};
 }
 
-} // namespace generals
+std::string info(const std::filesystem::path &network_path) {
+  GeneralsNetwork network;
+  torch::load(network, network_path);
+  return std::format(
+      "Network Name: {}\nParameter size: {}\nPlayer: {}\nMax size: {}x{}",
+      network_path.filename().replace_extension().string(),
+      network->parameters().size(), network->player, network->max_size.first,
+      network->max_size.second);
+}
+
+} // namespace generals::network
