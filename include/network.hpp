@@ -22,15 +22,21 @@ struct GeneralsNetworkImpl : torch::nn::Module {
   torch::nn::Sequential from_fc;
   torch::nn::Sequential direction_fc;
 
-  void save(torch::serialize::OutputArchive &archive) const;
-  void load(torch::serialize::InputArchive &archive);
-
   GeneralsNetworkImpl();
   GeneralsNetworkImpl(game::Player player, std::pair<int, int> max_size);
+
   std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x,
                                                   torch::Tensor action_mask);
 };
 TORCH_MODULE(GeneralsNetwork);
+
+void create(game::Player player, std::pair<int, int> max_size,
+            const std::filesystem::path &network_path);
+void save(GeneralsNetwork &network, const std::filesystem::path &network_path);
+GeneralsNetwork load(const std::filesystem::path &network_path);
+
+torch::Tensor encode(const PlayerBoard &board, unsigned int tick,
+                     game::Coord general);
 
 std::pair<game::Coord, game::Step::Direction>
 select_action(torch::Tensor from_probs, torch::Tensor direction_probs);

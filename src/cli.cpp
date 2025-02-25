@@ -37,7 +37,7 @@
 namespace generals::cli {
 
 inline auto to_network_path(const std::string &path) {
-  return (DATA_DIR / path).replace_extension(".pt");
+  return (DATA_DIR / path / path).replace_extension(".pt");
 }
 
 CommandArgs parse(int argc, char *argv[]) {

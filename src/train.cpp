@@ -84,7 +84,7 @@ void interactive_train(const std::filesystem::path &network_path) {
 
   spdlog::info("Loading network from {}", network_path);
   try {
-    torch::load(network, network_path);
+    network = network::load(network_path);
   } catch (const c10::Error &) {
     spdlog::error("Failed to load network");
     return;
@@ -151,7 +151,7 @@ void train(int game_nums, int max_ticks,
 
   spdlog::info("Loading network from {}", network_path);
   try {
-    torch::load(network, network_path);
+    network = network::load(network_path);
   } catch (const c10::Error &) {
     spdlog::error("Failed to load network");
     return;
@@ -230,14 +230,14 @@ void bidirectional_train(int game_nums, int max_ticks,
 
   spdlog::info("Loading network n1 from {}", n1_path);
   try {
-    torch::load(n1, n1_path);
+    n1 = network::load(n1_path);
   } catch (const c10::Error &) {
     spdlog::error("Failed to load network n1");
     return;
   }
   spdlog::info("Loading network n2 from {}", n2_path);
   try {
-    torch::load(n2, n2_path);
+    n2 = network::load(n2_path);
   } catch (const c10::Error &) {
     spdlog::error("Failed to load network n2");
     return;

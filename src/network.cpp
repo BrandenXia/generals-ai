@@ -3,7 +3,10 @@
 #include <ATen/core/TensorBody.h>
 #include <ATen/ops/softmax.h>
 #include <c10/core/ScalarType.h>
+#include <filesystem>
 #include <format>
+#include <fstream>
+#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <torch/nn/functional/pooling.h>
 #include <torch/nn/modules/activation.h>
@@ -21,35 +24,15 @@
 
 namespace generals::network {
 
-inline constexpr auto ARCHIVE_PLAYER_KEY = "player";
-inline constexpr auto ARCHIVE_MAX_WIDTH_KEY = "max_width";
-inline constexpr auto ARCHIVE_MAX_HEIGHT_KEY = "max_height";
-
-void GeneralsNetworkImpl::save(torch::serialize::OutputArchive &archive) const {
-  torch::nn::Module::save(archive);
-  archive.write(ARCHIVE_PLAYER_KEY, player.value());
-  archive.write(ARCHIVE_MAX_WIDTH_KEY, max_size.first);
-  archive.write(ARCHIVE_MAX_HEIGHT_KEY, max_size.second);
-}
-
-void GeneralsNetworkImpl::load(torch::serialize::InputArchive &archive) {
-  torch::nn::Module::load(archive);
-
-  c10::IValue player_val;
-  archive.read(ARCHIVE_PLAYER_KEY, player_val);
-  player = player_val.toInt();
-
-  c10::IValue max_width_val, max_height_val;
-  archive.read(ARCHIVE_MAX_WIDTH_KEY, max_width_val);
-  archive.read(ARCHIVE_MAX_HEIGHT_KEY, max_height_val);
-  max_size = {max_width_val.toInt(), max_height_val.toInt()};
-}
+inline constexpr auto META_PLAYER_KEY = "player";
+inline constexpr auto META_MAX_SIZE_KEY = "max_size";
 
 GeneralsNetworkImpl::GeneralsNetworkImpl()
     : GeneralsNetworkImpl(std::nullopt, {0, 0}) {}
 
 GeneralsNetworkImpl::GeneralsNetworkImpl(game::Player p, std::pair<int, int> s)
     : player(p), max_size(s),
+
       conv_layers(torch::nn::Sequential(
           torch::nn::Conv2d(
               torch::nn::Conv2dOptions(game::type_count + 2, 32, 3).padding(1)),
@@ -79,8 +62,9 @@ GeneralsNetworkImpl::GeneralsNetworkImpl(game::Player p, std::pair<int, int> s)
       direction_fc(torch::nn::Sequential(
           torch::nn::Linear(256, 128), torch::nn::ReLU(),
           torch::nn::Linear(128, 4),
-          torch::nn::Softmax(torch::nn::SoftmaxOptions(0)))) {
+          torch::nn::Softmax(torch::nn::SoftmaxOptions(0))))
 
+{
   register_module("conv_layers", conv_layers);
   register_module("residual_block", residual_block);
   register_module("from_fc", from_fc);
@@ -105,6 +89,40 @@ GeneralsNetworkImpl::forward(torch::Tensor x, torch::Tensor action_mask) {
   return {from_probs, direction_probs};
 }
 
+void create(game::Player player, std::pair<int, int> max_size,
+            const std::filesystem::path &network_path) {
+  network::GeneralsNetwork network{player, max_size};
+  save(network, network_path);
+}
+
+void save(GeneralsNetwork &network, const std::filesystem::path &network_path) {
+  std::filesystem::create_directories(network_path.parent_path());
+
+  // meta in json
+  std::ofstream meta_file{
+      std::filesystem::path{network_path}.replace_extension("json")};
+  nlohmann::json meta = {{META_PLAYER_KEY, network->player.value()},
+                         {META_MAX_SIZE_KEY, network->max_size}};
+  meta_file << meta;
+
+  // network
+  torch::save(network, network_path);
+}
+
+GeneralsNetwork load(const std::filesystem::path &network_path) {
+  std::ifstream meta_file{
+      std::filesystem::path{network_path}.replace_extension("json")};
+  nlohmann::json meta = nlohmann::json::parse(meta_file);
+
+  GeneralsNetwork network{
+      game::Player{meta[META_PLAYER_KEY].template get<int>()},
+      meta[META_MAX_SIZE_KEY].template get<std::pair<int, int>>()};
+
+  torch::load(network, network_path);
+
+  return network;
+}
+
 std::pair<game::Coord, game::Step::Direction>
 select_action(torch::Tensor from_probs, torch::Tensor direction_probs) {
   auto flattened_from_idx = from_probs.argmax();
@@ -118,8 +136,7 @@ select_action(torch::Tensor from_probs, torch::Tensor direction_probs) {
 }
 
 std::string info(const std::filesystem::path &network_path) {
-  GeneralsNetwork network;
-  torch::load(network, network_path);
+  GeneralsNetwork network = load(network_path);
   return std::format(
       "Network Name: {}\nParameter size: {}\nPlayer: {}\nMax size: {}x{}",
       network_path.filename().replace_extension().string(),
