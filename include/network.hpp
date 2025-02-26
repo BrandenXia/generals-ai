@@ -13,6 +13,14 @@
 
 namespace generals::network {
 
+struct ResidualBlock : torch::nn::Module {
+  torch::nn::Sequential layers;
+
+  ResidualBlock(int in_channels, int out_channels);
+
+  torch::Tensor forward(torch::Tensor x);
+};
+
 struct GeneralsNetworkImpl : torch::nn::Module {
   game::Player player;
   std::pair<int, int> max_size;

@@ -30,27 +30,23 @@
 
 namespace generals::network {
 
-struct ResidualBlock : torch::nn::Module {
-  torch::nn::Sequential layers;
+ResidualBlock::ResidualBlock(int in_channels, int out_channels)
+    : layers(torch::nn::Conv2d(
+                 torch::nn::Conv2dOptions(in_channels, out_channels, 3)
+                     .padding(1)),
+             torch::nn::BatchNorm2d(out_channels), torch::nn::ReLU(),
+             torch::nn::Conv2d(
+                 torch::nn::Conv2dOptions(out_channels, out_channels, 3)
+                     .padding(1)),
+             torch::nn::BatchNorm2d(out_channels))
 
-  ResidualBlock(int in_channels, int out_channels)
-      : layers(torch::nn::Conv2d(
-                   torch::nn::Conv2dOptions(in_channels, out_channels, 3)
-                       .padding(1)),
-               torch::nn::BatchNorm2d(out_channels), torch::nn::ReLU(),
-               torch::nn::Conv2d(
-                   torch::nn::Conv2dOptions(out_channels, out_channels, 3)
-                       .padding(1)),
-               torch::nn::BatchNorm2d(out_channels))
+{
+  register_module("layers", layers);
+}
 
-  {
-    register_module("layers", layers);
-  }
-
-  torch::Tensor forward(torch::Tensor x) {
-    return torch::relu(layers->forward(x) + x);
-  }
-};
+torch::Tensor ResidualBlock::forward(torch::Tensor x) {
+  return torch::relu(layers->forward(x) + x);
+}
 
 inline constexpr auto META_PLAYER_KEY = "player";
 inline constexpr auto META_MAX_SIZE_KEY = "max_size";
