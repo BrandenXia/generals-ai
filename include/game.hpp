@@ -52,11 +52,11 @@ using Coord = std::pair<unsigned int, unsigned int>;
 struct Step {
   Player player;
   Coord from;
-  enum class Direction : std::uint8_t { Up, Down, Left, Right } direction;
+  enum class Direction : std::uint8_t { Up, Left, Down, Right } direction;
 };
 
-inline constexpr std::array<std::string, 4> direction_str = {"Up", "Down",
-                                                             "Left", "Right"};
+inline constexpr std::array<std::string, 4> direction_str = {"Up", "Left",
+                                                             "Down", "Right"};
 inline auto format_as(const Step::Direction &direction) {
   return direction_str[static_cast<int>(direction)];
 }
