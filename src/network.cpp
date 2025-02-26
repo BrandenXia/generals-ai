@@ -1,13 +1,18 @@
 #include "network.hpp"
 
 #include <ATen/core/TensorBody.h>
+#include <ATen/core/interned_strings.h>
+#include <ATen/ops/argmax.h>
 #include <ATen/ops/softmax.h>
+#include <algorithm>
 #include <c10/core/ScalarType.h>
+#include <cstddef>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
+#include <torch/nn/functional/normalization.h>
 #include <torch/nn/functional/pooling.h>
 #include <torch/nn/modules/activation.h>
 #include <torch/nn/modules/batchnorm.h>
@@ -20,12 +25,38 @@
 #include <torch/serialize/input-archive.h>
 #include <utility>
 
+#include "device.hpp"
 #include "game.hpp"
 
 namespace generals::network {
 
+struct ResidualBlock : torch::nn::Module {
+  torch::nn::Sequential layers;
+
+  ResidualBlock(int in_channels, int out_channels)
+      : layers(torch::nn::Conv2d(
+                   torch::nn::Conv2dOptions(in_channels, out_channels, 3)
+                       .padding(1)),
+               torch::nn::BatchNorm2d(out_channels), torch::nn::ReLU(),
+               torch::nn::Conv2d(
+                   torch::nn::Conv2dOptions(out_channels, out_channels, 3)
+                       .padding(1)),
+               torch::nn::BatchNorm2d(out_channels))
+
+  {
+    register_module("layers", layers);
+  }
+
+  torch::Tensor forward(torch::Tensor x) {
+    return torch::relu(layers->forward(x) + x);
+  }
+};
+
 inline constexpr auto META_PLAYER_KEY = "player";
 inline constexpr auto META_MAX_SIZE_KEY = "max_size";
+
+inline constexpr unsigned int num_channels = 64;
+inline constexpr unsigned int num_resnet_blocks = 10;
 
 GeneralsNetworkImpl::GeneralsNetworkImpl()
     : GeneralsNetworkImpl(std::nullopt, {0, 0}) {}
@@ -33,60 +64,136 @@ GeneralsNetworkImpl::GeneralsNetworkImpl()
 GeneralsNetworkImpl::GeneralsNetworkImpl(game::Player p, std::pair<int, int> s)
     : player(p), max_size(s),
 
-      conv_layers(torch::nn::Sequential(
+      input_layers(
           torch::nn::Conv2d(
-              torch::nn::Conv2dOptions(game::type_count + 2, 32, 3).padding(1)),
-          torch::nn::BatchNorm2d(32), torch::nn::ReLU(),
-          torch::nn::Conv2d(torch::nn::Conv2dOptions(32, 64, 3).padding(1)),
-          torch::nn::BatchNorm2d(64), torch::nn::ReLU(),
-          torch::nn::Conv2d(torch::nn::Conv2dOptions(64, 128, 3).padding(1)),
-          torch::nn::BatchNorm2d(128), torch::nn::ReLU(),
-          torch::nn::Conv2d(torch::nn::Conv2dOptions(128, 256, 3).padding(1)),
-          torch::nn::BatchNorm2d(256), torch::nn::ReLU(),
-          torch::nn::Conv2d(torch::nn::Conv2dOptions(256, 256, 3).padding(1)),
-          torch::nn::BatchNorm2d(256), torch::nn::ReLU(),
-          torch::nn::Conv2d(
-              torch::nn::Conv2dOptions(256, 256, 3).padding(2).dilation(2)),
-          torch::nn::BatchNorm2d(256), torch::nn::ReLU())),
+              torch::nn::Conv2dOptions(13, num_channels, 3).padding(1)),
+          torch::nn::BatchNorm2d(num_channels), torch::nn::ReLU()),
 
-      residual_block(torch::nn::Sequential(
-          torch::nn::Conv2d(torch::nn::Conv2dOptions(256, 256, 3).padding(1)),
-          torch::nn::BatchNorm2d(256), torch::nn::ReLU(),
-          torch::nn::Conv2d(torch::nn::Conv2dOptions(256, 256, 3).padding(1)),
-          torch::nn::BatchNorm2d(256))),
+      policy_conv(
+          torch::nn::Conv2d(torch::nn::Conv2dOptions(num_channels, 2, 1)),
+          torch::nn::BatchNorm2d(2), torch::nn::ReLU()),
+      policy_fc(2 * s.first * s.second, 4 * s.first * s.second),
 
-      from_fc(torch::nn::Sequential(
-          torch::nn::Conv2d(torch::nn::Conv2dOptions(256, 1, 1)),
-          torch::nn::Softmax(torch::nn::SoftmaxOptions(1)))),
-
-      direction_fc(torch::nn::Sequential(
-          torch::nn::Linear(256, 128), torch::nn::ReLU(),
-          torch::nn::Linear(128, 4),
-          torch::nn::Softmax(torch::nn::SoftmaxOptions(0))))
+      value_conv(
+          torch::nn::Conv2d(torch::nn::Conv2dOptions(num_channels, 1, 1)),
+          torch::nn::BatchNorm2d(1), torch::nn::ReLU()),
+      value_fc(torch::nn::Linear(s.first * s.second, num_channels),
+               torch::nn::ReLU(), torch::nn::Linear(num_channels, 1),
+               torch::nn::Tanh())
 
 {
-  register_module("conv_layers", conv_layers);
-  register_module("residual_block", residual_block);
-  register_module("from_fc", from_fc);
-  register_module("direction_fc", direction_fc);
+  for (unsigned int i = 0; i < num_resnet_blocks; ++i)
+    resnet_block->push_back(ResidualBlock(num_channels, num_channels));
+
+  register_module("input_layers", input_layers);
+  register_module("resnet_block", resnet_block);
+  register_module("policy_conv", policy_conv);
+  register_module("policy_fc", policy_fc);
+  register_module("value_conv", value_conv);
+  register_module("value_fc", value_fc);
+}
+
+constexpr unsigned int MAX_TICK = 500;
+
+// channels:
+// 1. self army size, normalized using z-score
+// 2. opponent army size, normalized using z-score
+// 3. neutral army size, normalized using z-score
+// 4. self territory
+// 5. enemy territory
+// 6. neutral territory
+// 7. obstacle
+// 8. self general
+// 9. enemy general if visible
+// 10. fog of war, 1 if visible, 0 otherwise
+// 11. tick, normalized by max tick
+// 12. all 1s
+// 13. all 0s
+torch::Tensor GeneralsNetworkImpl::encode(const PlayerBoard &board,
+                                          unsigned int tick,
+                                          game::Coord general) const {
+  unsigned int h = board.extent(0);
+  unsigned int w = board.extent(1);
+  auto player = board.player;
+
+  auto x = at::zeros({1, 13, h, w}).to(get_device());
+
+  x[0][7][general.first][general.second] = 1;
+  for (std::size_t i = 0; i < h; ++i)
+    for (std::size_t j = 0; j < w; ++j) {
+      const auto &tile = board[i, j];
+      auto owner = tile.owner;
+      auto has_owner = tile.owner.has_value();
+      auto owned = tile.owner == player;
+      x[0][0][i][j] = owned ? tile.army : 0;
+      x[0][1][i][j] = has_owner && !owned ? tile.army : 0;
+      x[0][2][i][j] = !has_owner ? tile.army : 0;
+      x[0][3][i][j] = owned ? 1 : 0;
+      x[0][4][i][j] = has_owner && !owned ? 1 : 0;
+      x[0][5][i][j] = !has_owner ? 1 : 0;
+      x[0][6][i][j] =
+          tile.type == game::Type::Mountain ||
+                  tile.type == game::Type::UnknownObstacles ||
+                  (has_owner && !owned && tile.type == game::Type::City)
+              ? 1
+              : 0;
+      x[0][8][i][j] =
+          has_owner && !owned && tile.type == game::Type::General ? 1 : 0;
+      x[0][9][i][j] = tile.type == game::Type::Unknown ||
+                              tile.type == game::Type::UnknownObstacles
+                          ? 1
+                          : 0;
+    }
+  x[0][10] = std::max(tick, MAX_TICK) / static_cast<float>(MAX_TICK);
+  x[0][11] = 1;
+  x[0][12] = 0;
+
+  x[0][0] = torch::nn::functional::normalize(x[0][0]);
+  x[0][1] = torch::nn::functional::normalize(x[0][1]);
+  x[0][2] = torch::nn::functional::normalize(x[0][2]);
+
+  // pad the tensor to top left
+  return torch::nn::functional::pad(
+      x, torch::nn::functional::PadFuncOptions(
+             {0, max_size.second - w, 0, max_size.first - h})
+             .mode(torch::kConstant));
+}
+
+inline torch::Tensor action_mask(torch::Tensor x) {
+  auto f = x[0][3].flatten();
+  return torch::cat({f, f, f, f});
 }
 
 std::pair<at::Tensor, at::Tensor>
-GeneralsNetworkImpl::forward(torch::Tensor x, torch::Tensor action_mask) {
-  x = x.unsqueeze(0);
-  action_mask = action_mask.unsqueeze(0);
+GeneralsNetworkImpl::forward(torch::Tensor x) {
+  x = input_layers->forward(x);
+  x = resnet_block->forward(x);
 
-  x = conv_layers->forward(x);
-  auto residual = x;
-  x = residual_block->forward(x) + residual;
+  auto policy = policy_conv->forward(x);
+  policy = policy.view({-1, 2 * max_size.first * max_size.second});
+  policy = policy_fc->forward(policy);
+  policy = policy.masked_fill(action_mask(x) == 0, -1e9);
+  policy = torch::softmax(policy, 1);
 
-  auto from_probs = from_fc->forward(x);
-  from_probs = from_probs * action_mask;
+  auto value = value_conv->forward(x);
+  value = value.view({-1, max_size.first * max_size.second});
+  value = value_fc->forward(value);
 
-  auto gap_features = torch::avg_pool2d(x, {x.size(2), x.size(3)}).squeeze();
-  auto direction_probs = direction_fc->forward(gap_features);
+  return {policy, value};
+}
 
-  return {from_probs, direction_probs};
+std::pair<game::Coord, game::Step::Direction>
+GeneralsNetworkImpl::select_action(torch::Tensor policy) const {
+  auto idx = torch::argmax(policy).item<int>();
+  unsigned int board_size = max_size.first * max_size.second;
+
+  // major tile, policy interpret as [t1 up, t2 up, ..., t1 left, t2 left, ...]
+  auto direction = idx / board_size;
+  auto coord = idx % board_size;
+
+  game::Coord pos{coord / max_size.second, coord % max_size.second};
+
+  return {pos, static_cast<game::Step::Direction>(direction)};
 }
 
 void create(game::Player player, std::pair<int, int> max_size,
@@ -121,18 +228,6 @@ GeneralsNetwork load(const std::filesystem::path &network_path) {
   torch::load(network, network_path);
 
   return network;
-}
-
-std::pair<game::Coord, game::Step::Direction>
-select_action(torch::Tensor from_probs, torch::Tensor direction_probs) {
-  auto flattened_from_idx = from_probs.argmax();
-  auto idx = flattened_from_idx.item<int>();
-  unsigned int m = from_probs.size(3);
-  game::Coord from{idx / m, idx % m};
-
-  int direction = direction_probs.argmax().item<int>();
-
-  return {from, static_cast<game::Step::Direction>(direction)};
 }
 
 std::string info(const std::filesystem::path &network_path) {

@@ -1,5 +1,4 @@
 #include "game.hpp"
-#include "device.hpp"
 
 #include <ATen/core/TensorBody.h>
 #include <ATen/ops/empty.h>
@@ -44,40 +43,6 @@ const Tile &PlayerBoard::operator[](size_t i, size_t j) const {
     return Board::operator[](i, j).type == Type::Blank ? UNKNOWN_TILE
                                                        : UNKNOWN_OBSTACLES_TILE;
   return Board::operator[](i, j);
-}
-
-at::Tensor PlayerBoard::to_tensor() const {
-  unsigned int h = extent(0);
-  unsigned int w = extent(1);
-  unsigned int layers = 2 + type_count;
-
-  auto tensor = at::zeros({layers, h, w}).to(get_device());
-  for (size_t i = 0; i < h; ++i)
-    for (size_t j = 0; j < w; ++j) {
-      const auto &tile = operator[](i, j);
-      tensor[0][i][j] = tile.owner.value_or(-1);
-      tensor[1][i][j] = tile.army;
-
-      int type_index = static_cast<int>(tile.type) + 2;
-      tensor[type_index][i][j] = 1;
-    }
-
-  return tensor;
-}
-
-at::Tensor PlayerBoard::action_mask() const {
-  auto h = extent(0);
-  auto w = extent(1);
-  at::Tensor mask =
-      at::ones({static_cast<long long>(h), static_cast<long long>(w)},
-               at::kByte)
-          .to(get_device());
-
-  for (size_t i = 0; i < h; ++i)
-    for (size_t j = 0; j < w; ++j)
-      if (this->operator[](i, j).owner != player) mask[i][j] = 0;
-
-  return mask;
 }
 
 inline unsigned int manhattanDistance(unsigned int x1, unsigned int y1,
