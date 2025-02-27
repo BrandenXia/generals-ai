@@ -112,41 +112,41 @@ torch::Tensor GeneralsNetworkImpl::encode(const PlayerBoard &board,
   unsigned int w = board.extent(1);
   auto player = board.player;
 
-  auto x = at::zeros({1, 13, h, w}).to(get_device());
+  auto x = at::zeros({13, h, w}).to(get_device());
 
-  x[0][7][general.first][general.second] = 1;
+  x[7][general.first][general.second] = 1;
   for (std::size_t i = 0; i < h; ++i)
     for (std::size_t j = 0; j < w; ++j) {
       const auto &tile = board[i, j];
       auto owner = tile.owner;
       auto has_owner = tile.owner.has_value();
       auto owned = tile.owner == player;
-      x[0][0][i][j] = owned ? tile.army : 0;
-      x[0][1][i][j] = has_owner && !owned ? tile.army : 0;
-      x[0][2][i][j] = !has_owner ? tile.army : 0;
-      x[0][3][i][j] = owned ? 1 : 0;
-      x[0][4][i][j] = has_owner && !owned ? 1 : 0;
-      x[0][5][i][j] = !has_owner ? 1 : 0;
-      x[0][6][i][j] =
+      x[0][i][j] = owned ? tile.army : 0;
+      x[1][i][j] = has_owner && !owned ? tile.army : 0;
+      x[2][i][j] = !has_owner ? tile.army : 0;
+      x[3][i][j] = owned ? 1 : 0;
+      x[4][i][j] = has_owner && !owned ? 1 : 0;
+      x[5][i][j] = !has_owner ? 1 : 0;
+      x[6][i][j] =
           tile.type == game::Type::Mountain ||
                   tile.type == game::Type::UnknownObstacles ||
                   (has_owner && !owned && tile.type == game::Type::City)
               ? 1
               : 0;
-      x[0][8][i][j] =
+      x[8][i][j] =
           has_owner && !owned && tile.type == game::Type::General ? 1 : 0;
-      x[0][9][i][j] = tile.type == game::Type::Unknown ||
-                              tile.type == game::Type::UnknownObstacles
-                          ? 1
-                          : 0;
+      x[9][i][j] = tile.type == game::Type::Unknown ||
+                           tile.type == game::Type::UnknownObstacles
+                       ? 1
+                       : 0;
     }
-  x[0][10] = std::max(tick, MAX_TICK) / static_cast<float>(MAX_TICK);
-  x[0][11] = 1;
-  x[0][12] = 0;
+  x[10] = std::max(tick, MAX_TICK) / static_cast<float>(MAX_TICK);
+  x[11] = 1;
+  x[12] = 0;
 
-  x[0][0] = torch::nn::functional::normalize(x[0][0]);
-  x[0][1] = torch::nn::functional::normalize(x[0][1]);
-  x[0][2] = torch::nn::functional::normalize(x[0][2]);
+  x[0] = torch::nn::functional::normalize(x[0][0]);
+  x[1] = torch::nn::functional::normalize(x[0][1]);
+  x[2] = torch::nn::functional::normalize(x[0][2]);
 
   // pad the tensor to top left
   return torch::nn::functional::pad(
