@@ -54,6 +54,11 @@ inline constexpr auto META_MAX_SIZE_KEY = "max_size";
 inline constexpr unsigned int num_channels = 64;
 inline constexpr unsigned int num_resnet_blocks = 10;
 
+torch::Tensor action_mask(torch::Tensor x) {
+  auto f = x[3].flatten();
+  return torch::cat({f, f, f, f});
+}
+
 GeneralsNetworkImpl::GeneralsNetworkImpl()
     : GeneralsNetworkImpl(std::nullopt, {0, 0}) {}
 
@@ -155,31 +160,26 @@ torch::Tensor GeneralsNetworkImpl::encode(const PlayerBoard &board,
              .mode(torch::kConstant));
 }
 
-inline torch::Tensor action_mask(torch::Tensor x) {
-  auto f = x[0][3].flatten();
-  return torch::cat({f, f, f, f});
-}
-
 std::pair<at::Tensor, at::Tensor>
 GeneralsNetworkImpl::forward(torch::Tensor x) {
-  x = input_layers->forward(x);
-  x = resnet_block->forward(x);
+  auto x0 = input_layers->forward(x);
+  auto x1 = resnet_block->forward(x);
 
-  auto policy = policy_conv->forward(x);
+  auto policy = policy_conv->forward(x1);
   policy = policy.view({-1, 2 * max_size.first * max_size.second});
   policy = policy_fc->forward(policy);
-  policy = policy.masked_fill(action_mask(x) == 0, -1e9);
+  policy =
+      policy.masked_fill(action_mask(x.squeeze(0)).unsqueeze(0) == 0, -1e9);
   policy = torch::softmax(policy, 1);
 
-  auto value = value_conv->forward(x);
+  auto value = value_conv->forward(x1);
   value = value.view({-1, max_size.first * max_size.second});
   value = value_fc->forward(value);
 
   return {policy, value};
 }
 
-game::Step GeneralsNetworkImpl::select_action(torch::Tensor policy) const {
-  auto idx = torch::argmax(policy).item<int>();
+game::Step GeneralsNetworkImpl::idx2step(unsigned int idx) const {
   unsigned int board_size = max_size.first * max_size.second;
 
   // major tile, policy interpret as [t1 up, t2 up, ..., t1 left, t2 left, ...]
@@ -189,6 +189,12 @@ game::Step GeneralsNetworkImpl::select_action(torch::Tensor policy) const {
   game::Coord pos{coord / max_size.second, coord % max_size.second};
 
   return {player, pos, static_cast<game::Step::Direction>(direction)};
+}
+
+game::Step GeneralsNetworkImpl::select_action(torch::Tensor policy) const {
+  auto idx = torch::argmax(policy).item<int>();
+
+  return idx2step(idx);
 }
 
 void create(game::Player player, std::pair<int, int> max_size,

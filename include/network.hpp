@@ -21,6 +21,8 @@ struct ResidualBlock : torch::nn::Module {
   torch::Tensor forward(torch::Tensor x);
 };
 
+torch::Tensor action_mask(torch::Tensor x);
+
 struct GeneralsNetworkImpl : torch::nn::Module {
   game::Player player;
   std::pair<int, int> max_size;
@@ -43,6 +45,8 @@ struct GeneralsNetworkImpl : torch::nn::Module {
 
   std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x);
 
+  // convert policy index to step
+  game::Step idx2step(unsigned int idx) const;
   game::Step select_action(torch::Tensor policy) const;
 };
 TORCH_MODULE(GeneralsNetwork);
