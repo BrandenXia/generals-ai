@@ -178,8 +178,7 @@ GeneralsNetworkImpl::forward(torch::Tensor x) {
   return {policy, value};
 }
 
-std::pair<game::Coord, game::Step::Direction>
-GeneralsNetworkImpl::select_action(torch::Tensor policy) const {
+game::Step GeneralsNetworkImpl::select_action(torch::Tensor policy) const {
   auto idx = torch::argmax(policy).item<int>();
   unsigned int board_size = max_size.first * max_size.second;
 
@@ -189,7 +188,7 @@ GeneralsNetworkImpl::select_action(torch::Tensor policy) const {
 
   game::Coord pos{coord / max_size.second, coord % max_size.second};
 
-  return {pos, static_cast<game::Step::Direction>(direction)};
+  return {player, pos, static_cast<game::Step::Direction>(direction)};
 }
 
 void create(game::Player player, std::pair<int, int> max_size,

@@ -43,8 +43,7 @@ struct GeneralsNetworkImpl : torch::nn::Module {
 
   std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x);
 
-  std::pair<game::Coord, game::Step::Direction>
-  select_action(torch::Tensor policy) const;
+  game::Step select_action(torch::Tensor policy) const;
 };
 TORCH_MODULE(GeneralsNetwork);
 
