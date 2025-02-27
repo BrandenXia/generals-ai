@@ -55,7 +55,7 @@ Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
   assert(width > 0 && height > 0 && player_count > 0);
   assert(width * height >= 10 * player_count);
 
-  total_player = current_player = player_count;
+  total_player_count = current_player_count = player_count;
   const auto map_size = width * height;
   tiles.resize(map_size, Tile{Type::Blank});
 
@@ -147,7 +147,7 @@ void Game::apply_inplace(const Step &step) {
       // if the tile is a general, change it to a city
       if (t.type == Type::General) {
         t.type = Type::City;
-        current_player--;
+        current_player_count--;
       }
     }
   }

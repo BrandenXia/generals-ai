@@ -63,8 +63,8 @@ struct Game {
   std::vector<Tile> tiles;
   Board board;
   unsigned int tick;
-  unsigned short total_player;
-  unsigned short current_player;
+  unsigned short total_player_count;
+  unsigned short current_player_count;
   std::vector<Coord> generals_pos;
 
   explicit Game(unsigned int width, unsigned int height,
@@ -74,7 +74,12 @@ struct Game {
   Game apply(const Step &step) const;
   void apply_inplace(const Step &step);
   void next_turn();
-  inline bool is_over() const { return current_player <= 1; }
+  inline bool player_alive(Player player) const {
+    return player.has_value() &&
+           board[generals_pos[*player].first, generals_pos[*player].second]
+                   .type == Type::General;
+  }
+  inline bool is_over() const { return current_player_count <= 1; }
 };
 
 } // namespace generals::game
