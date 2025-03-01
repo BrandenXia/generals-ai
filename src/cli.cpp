@@ -18,17 +18,10 @@
 
 #define ADD_GAME_NUM(name)                                                     \
   name##_cmd.add_argument("-g", "--games")                                     \
-      .default_value(1000)                                                     \
+      .default_value(50)                                                       \
       .help("Number of games to train on")                                     \
       .scan<'d', int>()                                                        \
       .metavar("NUM_GAMES");
-
-#define ADD_MAX_TICK(name)                                                     \
-  name##_cmd.add_argument("-t", "--ticks")                                     \
-      .default_value(1000)                                                     \
-      .help("Maximum number of ticks per game")                                \
-      .scan<'d', int>()                                                        \
-      .metavar("MAX_TICKS");
 
 #define DESCRIBE(name, str) name##_cmd.add_description(str)
 #define SUBPARSER(name) program.add_subparser(name##_cmd)
@@ -73,28 +66,28 @@ CommandArgs parse(int argc, char *argv[]) {
   ArgumentParser train_cmd("train");
   DESCRIBE(train, "Train the AI");
   ADD_GAME_NUM(train);
-  ADD_MAX_TICK(train);
   ADD_NETWORK_ARG(train);
+  train_cmd.add_argument("-i", "--iterations")
+      .default_value(100)
+      .help("Number of training iterations")
+      .scan<'d', int>()
+      .metavar("NUM_ITERATIONS");
+  train_cmd.add_argument("-m", "--mcts")
+      .default_value(200)
+      .help("Number of MCTS simulations per move")
+      .scan<'d', int>()
+      .metavar("MCTS_NUM");
+  train_cmd.add_argument("-e", "--exploration")
+      .default_value(1.f)
+      .help("Exploration constant for MCTS")
+      .scan<'g', float>()
+      .metavar("EXPLORATION_CONSTANT");
+  train_cmd.add_argument("-b", "--batch")
+      .default_value(32)
+      .help("Batch size for training")
+      .scan<'d', int>()
+      .metavar("BATCH_SIZE");
   SUBPARSER(train);
-
-  ArgumentParser interactive_cmd("interactive");
-  DESCRIBE(interactive, "Train the AI interactively");
-  ADD_NETWORK_ARG(interactive);
-  SUBPARSER(interactive);
-
-  ArgumentParser bidirectional_cmd("bidirectional");
-  DESCRIBE(bidirectional, "Train the AI in a bidirectional manner");
-  ADD_GAME_NUM(bidirectional);
-  ADD_MAX_TICK(bidirectional);
-  bidirectional_cmd.add_argument("-n1", "--network1")
-      .required()
-      .help("Network 1 name")
-      .metavar("NETWORK_NAME");
-  bidirectional_cmd.add_argument("-n2", "--network2")
-      .required()
-      .help("Network 2 name")
-      .metavar("NETWORK_NAME");
-  SUBPARSER(bidirectional);
 
   try {
     program.parse_args(argc, argv);
@@ -114,20 +107,18 @@ CommandArgs parse(int argc, char *argv[]) {
     auto network_path = info_cmd.get("NETWORK_NAME");
     return Info{to_network_path(network_path)};
   } else if SUB_CMD_USED (train) {
-    auto game_nums = train_cmd.get<int>("--games");
-    auto max_ticks = train_cmd.get<int>("--ticks");
     auto network_path = train_cmd.get("--network");
-    return Train{game_nums, max_ticks, to_network_path(network_path)};
-  } else if SUB_CMD_USED (interactive) {
-    auto network_path = interactive_cmd.get("--network");
-    return Interactive{to_network_path(network_path)};
-  } else if SUB_CMD_USED (bidirectional) {
-    auto game_nums = bidirectional_cmd.get<int>("--games");
-    auto max_ticks = bidirectional_cmd.get<int>("--ticks");
-    auto n1_path = bidirectional_cmd.get("--network1");
-    auto n2_path = bidirectional_cmd.get("--network2");
-    return Bidirectional{game_nums, max_ticks, to_network_path(n1_path),
-                         to_network_path(n2_path)};
+    auto iterations = train_cmd.get<int>("--iterations");
+    auto game_num = train_cmd.get<int>("--games");
+    auto mcts_num = train_cmd.get<int>("--mcts");
+    auto exploration_constant = train_cmd.get<float>("--exploration");
+    auto batch_size = train_cmd.get<int>("--batch");
+    return Train{to_network_path(network_path),
+                 static_cast<unsigned int>(iterations),
+                 static_cast<unsigned int>(game_num),
+                 static_cast<unsigned int>(mcts_num),
+                 exploration_constant,
+                 static_cast<unsigned int>(batch_size)};
   } else
     std::cerr << program;
 

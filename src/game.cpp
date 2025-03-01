@@ -45,13 +45,19 @@ const Tile &PlayerBoard::operator[](size_t i, size_t j) const {
   return Board::operator[](i, j);
 }
 
+bool operator==(const Step &lhs, const Step &rhs) {
+  return lhs.player == rhs.player && lhs.from == rhs.from &&
+         lhs.direction == rhs.direction;
+}
+
 inline unsigned int manhattanDistance(unsigned int x1, unsigned int y1,
                                       unsigned int x2, unsigned int y2) {
   return std::abs(static_cast<int>(x1) - static_cast<int>(x2)) +
          std::abs(static_cast<int>(y1) - static_cast<int>(y2));
 }
 
-Game::Game(unsigned int width, unsigned int height, unsigned int player_count) {
+Game::Game(unsigned int width, unsigned int height, unsigned int player_count)
+    : tick(0) {
   assert(width > 0 && height > 0 && player_count > 0);
   assert(width * height >= 10 * player_count);
 

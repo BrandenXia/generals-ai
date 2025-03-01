@@ -23,27 +23,18 @@ struct Info {
 };
 
 struct Train {
-  int game_nums;
-  int max_ticks;
   std::filesystem::path network_path;
-};
-
-struct Interactive {
-  std::filesystem::path network_path;
-};
-
-struct Bidirectional {
-  int game_nums;
-  int max_ticks;
-  std::filesystem::path n1_path;
-  std::filesystem::path n2_path;
+  unsigned int iterations;
+  unsigned int game_num;
+  unsigned int mcts_num;
+  float exploration_constant;
+  unsigned int batch_size;
 };
 
 } // namespace args
 
 using CommandArgs =
-    std::variant<args::Create, args::Info, args::Train, args::Interactive,
-                 args::Bidirectional, std::monostate>;
+    std::variant<args::Create, args::Info, args::Train, std::monostate>;
 
 CommandArgs parse(int argc, char *argv[]);
 

@@ -1,7 +1,11 @@
 #include "train.hpp"
+#include "device.hpp"
 
+#include <algorithm>
+#include <functional>
 #include <indicators/cursor_control.hpp>
 #include <indicators/progress_bar.hpp>
+#include <limits>
 #include <random>
 #include <spdlog/fmt/std.h>
 #include <spdlog/spdlog.h>
@@ -9,304 +13,329 @@
 #include <torch/optim/schedulers/step_lr.h>
 #include <torch/serialize.h>
 
-#include "device.hpp"
-#include "evaluation.hpp"
-#include "game.hpp"
-#include "interaction.hpp"
-#include "network.hpp"
+#define FOR_ALIVE_PLAYER(game, idx)                                            \
+  for (int idx = 0; idx < game.total_player_count; ++idx)                      \
+    if (game.player_alive(idx))
 
 namespace generals::train {
 
-std::deque<double> reward_history;
-const int history_size = 100; // Number of episodes to average over
-
-inline double calculate_baseline() {
-  if (reward_history.empty()) return 0.0;
-  double sum =
-      std::accumulate(reward_history.begin(), reward_history.end(), 0.0);
-  return sum / reward_history.size();
+MCTSNode::MCTSNode(const game::Game &s, MCTSNode *p, std::vector<game::Step> a,
+                   std::vector<StepMap> probs)
+    : state(s), parent(p), actions(a), prior_probs(probs), visits(0) {
+  total_values.resize(state.total_player_count, 0.f);
 }
 
-eval::AlgoEval eval;
-inline at::Tensor criterion(game::Player player, game::Game game,
-                            at::Tensor from_probs, at::Tensor direction_probs,
-                            game::Coord from, game::Step::Direction direction) {
-  auto device = get_device();
-
-  double reward = eval(game, player);
-
-  reward_history.push_back(reward);
-  if (reward_history.size() > history_size) { reward_history.pop_front(); }
-  auto reward_tensor =
-      torch::tensor({reward}, torch::TensorOptions().dtype(torch::kFloat32))
-          .to(device);
-
-  double baseline = calculate_baseline();
-  auto baseline_tensor =
-      torch::tensor({baseline}, torch::TensorOptions().dtype(torch::kFloat32))
-          .to(device);
-
-  auto advantage = reward_tensor - baseline_tensor;
-
-  auto flattened_from_probs = from_probs.view({-1});
-  auto selected_from_prob =
-      flattened_from_probs[from.first * from_probs.size(3) + from.second];
-  auto selected_direction_prob = direction_probs[static_cast<int>(direction)];
-
-  auto entropy =
-      -torch::sum(from_probs * torch::log(from_probs + 1e-8)) -
-      torch::sum(direction_probs * torch::log(direction_probs + 1e-8));
-
-  double entropy_coefficient = 0.01;
-
-  auto loss = -(torch::log(selected_from_prob + 1e-8) +
-                torch::log(selected_direction_prob + 1e-8)) *
-                  advantage.detach() -
-              entropy_coefficient * entropy;
-
-  return loss;
+MCTSNode::~MCTSNode() {
+  for (auto child : children)
+    delete child;
 }
 
-void interactive_train(const std::filesystem::path &network_path) {
-  using namespace generals;
+bool MCTSNode::is_leaf() const { return children.empty(); }
 
-  spdlog::info("Starting interactive training");
+float MCTSNode::ucb_score(game::Player p, float e) const {
+  if (visits == 0) return std::numeric_limits<float>::infinity();
 
-  auto device = get_device();
-  GeneralsNetwork network;
-  torch::optim::AdamW optimizer(network->parameters(),
-                                torch::optim::AdamWOptions(1e-3));
-  torch::optim::StepLR scheduler{optimizer, 10, 0.1};
+  auto exploitation = total_values[p.value()] / visits;
 
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<unsigned int> map_size{18, 25};
-
-  spdlog::info("Loading network from {}", network_path);
-  try {
-    network = network::load(network_path);
-  } catch (const c10::Error &) {
-    spdlog::error("Failed to load network");
-    return;
-  }
-  network->to(device);
-
-  auto opponent = network->player;
-  auto interact_player = opponent == 1 ? 0 : 1;
-
-  bool closed = false;
-  while (true) {
-    Game game{map_size(gen), map_size(gen), 2};
-
-    spdlog::info("Starting new game with map size {}x{}", game.board.extent(0),
-                 game.board.extent(1));
-
-    const auto interact = [&] {
-      const auto &player_board = game.player_view(opponent);
-      auto [from_probs, direction_probs] = network->forward(
-          player_board.to_tensor(), player_board.action_mask());
-      const auto &[from, direction] =
-          network::select_action(from_probs, direction_probs);
-
-      game.apply_inplace({opponent, from, direction});
-      game.next_turn();
-
-      auto loss = criterion(opponent, game, from_probs, direction_probs, from,
-                            direction);
-
-      optimizer.zero_grad();
-      loss.backward();
-      optimizer.step();
-    };
-
-    scheduler.step();
-
-    if ((closed = interaction::interaction(game, interact_player, interact)))
-      break;
+  float prior_probs = 0.f;
+  if (parent) {
+    const auto &pp_probs = parent->prior_probs[p.value()];
+    if (p.value() < actions.size()) {
+      auto it = pp_probs.find(actions[p.value()]);
+      if (it != pp_probs.end()) prior_probs = it->second;
+    }
   }
 
-  if (closed) {
-    spdlog::info("Window closed, saving network to {}", network_path);
+  float exploration =
+      e * prior_probs * std::sqrt(parent ? parent->visits : 1) / (1.f + visits);
 
-    torch::save(network, network_path);
-  }
+  return exploitation + exploration;
 }
 
-void train(int game_nums, int max_ticks,
-           const std::filesystem::path &network_path) {
-  using namespace generals;
-
-  spdlog::info("Starting training");
-
-  auto device = get_device();
-  GeneralsNetwork network;
-  torch::optim::AdamW optimizer(
-      network->parameters(),
-      torch::optim::AdamWOptions(1e-3).weight_decay(1e-4));
-  torch::optim::StepLR scheduler{optimizer, 10, 0.1};
-
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<unsigned int> map_size{18, 25};
-
-  spdlog::info("Loading network from {}", network_path);
-  try {
-    network = network::load(network_path);
-  } catch (const c10::Error &) {
-    spdlog::error("Failed to load network");
-    return;
-  }
-  network->to(device);
-
-  auto player = network->player;
-
-  indicators::show_console_cursor(false);
-  indicators::ProgressBar bar{
-      indicators::option::BarWidth{50},
-      indicators::option::Start{"["},
-      indicators::option::Fill{"="},
-      indicators::option::Lead{">"},
-      indicators::option::Remainder{" "},
-      indicators::option::End{"]"},
-      indicators::option::ForegroundColor{indicators::Color::yellow},
-      indicators::option::ShowPercentage{true},
-      indicators::option::ShowElapsedTime{true},
-      indicators::option::ShowRemainingTime{true},
-      indicators::option::MaxProgress{game_nums},
-      indicators::option::PrefixText{"Training "},
+MCTSNode *MCTSNode::select_child(game::Player p, float e) {
+  const auto ucb_cmp = [&p, e](const auto a, const auto b) {
+    return a->ucb_score(p, e) < b->ucb_score(p, e);
   };
+  return *std::ranges::max_element(children, ucb_cmp);
+}
 
-  for (int i = 0; i < game_nums; ++i) {
-    const auto w = map_size(gen), h = map_size(gen);
-    Game game{w, h, 2};
-    auto view = game.player_view(player);
+void MCTSNode::expand(GeneralsNetwork &nn) {
+  prior_probs.resize(state.total_player_count);
 
-    while (game.tick < max_ticks && !game.is_over()) {
-      auto [from_probs, direction_probs] =
-          network->forward(view.to_tensor(), view.action_mask());
-      const auto &[from, direction] =
-          network::select_action(from_probs, direction_probs);
+  FOR_ALIVE_PLAYER(state, p) {
+    auto general_pos = state.generals_pos[p];
+    auto pv = state.player_view(p);
+    auto pv_tensor =
+        nn->encode(pv, state.tick, general_pos).unsqueeze(0).to(get_device());
+    auto mask = network::action_mask(pv_tensor.squeeze(0));
 
-      game.apply_inplace({player, from, direction});
-      game.next_turn();
+    auto [policy, _] = nn->forward(pv_tensor);
+    policy = policy.squeeze(0);
 
-      auto loss =
-          criterion(player, game, from_probs, direction_probs, from, direction);
+    for (int i = 0; i < policy.size(0); ++i) {
+      auto step = nn->idx2step(i);
+      if (mask[i].item<float>() == 0) continue;
 
-      optimizer.zero_grad();
-      loss.backward();
-      optimizer.step();
+      prior_probs[p].emplace(step, policy[i].item<float>());
+    }
+  }
+
+  generate_child();
+}
+
+void MCTSNode::generate_child() {
+  std::vector<std::vector<game::Step>> all_combin;
+
+  std::function<void(std::vector<game::Step>, int)> generate_combin =
+      [&](auto current_combin, auto player_idx) {
+        if (player_idx == state.total_player_count) {
+          all_combin.push_back(current_combin);
+          return;
+        };
+
+        if (!state.player_alive(player_idx)) {
+          generate_combin(current_combin, player_idx + 1);
+          return;
+        }
+
+        if (player_idx < prior_probs.size() &&
+            prior_probs[player_idx].size() > 0)
+          for (const auto &[step, _] : prior_probs[player_idx]) {
+            auto next_combin = current_combin;
+            next_combin.push_back(step);
+            generate_combin(next_combin, player_idx + 1);
+          }
+        else
+          generate_combin(current_combin, player_idx + 1);
+      };
+
+  generate_combin({}, 0);
+
+  for (const auto &combin : all_combin) {
+    Game next_state = state;
+    std::vector<game::Step> child_actions(state.total_player_count);
+
+    for (const auto &step : combin) {
+      if (!state.player_alive(step.player)) continue;
+
+      next_state = next_state.apply(step);
+      child_actions[step.player.value()] = step;
     }
 
-    scheduler.step();
-
-    bar.set_progress(i);
+    next_state.next_turn();
+    children.push_back(
+        new MCTSNode(next_state, this, child_actions, prior_probs));
   }
-  indicators::show_console_cursor(true);
-
-  spdlog::info("Saving network to {}", network_path);
-  torch::save(network, network_path);
 }
 
-void bidirectional_train(int game_nums, int max_ticks,
-                         const std::filesystem::path &n1_path,
-                         const std::filesystem::path &n2_path) {
-  using namespace generals;
+void MCTSNode::backpropagate(const std::vector<float> &values) {
+  visits++;
+  for (int p = 0; p < values.size(); ++p)
+    if (p < total_values.size()) total_values[p] += values[p];
 
-  spdlog::info("Starting bidirectional training");
+  if (parent) parent->backpropagate(values);
+}
 
-  auto device = get_device();
-  GeneralsNetwork n1, n2;
-  torch::optim::AdamW n1_optimizer(
-      n1->parameters(), torch::optim::AdamWOptions(1e-3).weight_decay(1e-4)),
-      n2_optimizer(n2->parameters(),
-                   torch::optim::AdamWOptions(1e-3).weight_decay(1e-4));
-  torch::optim::StepLR n1_scheduler{n1_optimizer, 10, 0.1},
-      n2_scheduler{n2_optimizer, 10, 0.1};
+std::pair<std::vector<std::vector<float>>, std::vector<float>>
+run_mcts(GeneralsNetwork &nn, const game::Game &i_state, int n, float e) {
+  auto root = new MCTSNode(i_state);
+  root->expand(nn);
+
+  for (int i = 0; i < n; ++i) {
+    auto node = root;
+
+    std::vector<game::Player> alive_players;
+    for (int p = 0; p < i_state.total_player_count; ++p)
+      if (i_state.player_alive(p)) alive_players.push_back(p);
+
+    while (!node->is_leaf()) {
+      std::random_device rd;
+      std::mt19937 gen(rd());
+      std::uniform_int_distribution<int> dis(0, alive_players.size() - 1);
+
+      node = node->select_child(alive_players[dis(gen)], e);
+    }
+
+    std::vector<float> values(i_state.total_player_count, 0.f);
+
+    if (!node->state.is_over()) {
+      node->expand(nn);
+
+      for (int p = 0; p < i_state.total_player_count; ++p) {
+        if (!node->state.player_alive(p)) continue;
+
+        auto pv = node->state.player_view(p);
+        auto general_pos = node->state.generals_pos[p];
+        auto pv_tensor = nn->encode(pv, node->state.tick, general_pos)
+                             .unsqueeze(0)
+                             .to(get_device());
+        auto [_, value] = nn->forward(pv_tensor);
+        values[p] = value.item<float>();
+      }
+    } else
+      for (int p = 0; p < i_state.total_player_count; ++p)
+        if (node->state.player_alive(p))
+          values[p] = 1.f;
+        else
+          values[p] = -1.f;
+
+    node->backpropagate(values);
+  }
+
+  std::vector<std::vector<float>> policies(i_state.total_player_count);
+  for (int p = 0; p < i_state.total_player_count; ++p)
+    if (i_state.player_alive(p))
+      policies[p].resize(i_state.board.size() * 4, 0.f);
+
+  for (auto child : root->children) {
+    for (int p = 0; p < child->actions.size(); ++p)
+      if (i_state.player_alive(p)) {
+        const auto &step = child->actions[p];
+        int idx = static_cast<int>(step.direction) * i_state.board.size() +
+                  step.from.first * i_state.board.extent(0) + step.from.second;
+        if (idx < policies[p].size())
+          policies[p][idx] = static_cast<float>(child->visits) / root->visits;
+      }
+  }
+
+  std::vector<float> root_values(i_state.total_player_count, 0.f);
+  FOR_ALIVE_PLAYER(i_state, p) {
+    root_values[p] = root->total_values[p] / root->visits;
+  }
+
+  delete root;
+  return {policies, root_values};
+}
+
+std::vector<
+    std::tuple<torch::Tensor, std::vector<torch::Tensor>, std::vector<float>>>
+generate_self_play_data(GeneralsNetwork &nn, int n, int ns, float e) {
+  std::vector<
+      std::tuple<torch::Tensor, std::vector<torch::Tensor>, std::vector<float>>>
+      train_data;
+  std::random_device rd;
+  std::mt19937 gen(rd());
+
+  for (int i = 0; i < n; i++) {
+    game::Game game(nn->max_size.first, nn->max_size.second, 2);
+    decltype(train_data) game_data;
+
+    while (!game.is_over()) {
+      auto [policies, values] = run_mcts(nn, game, ns, e);
+
+      std::vector<torch::Tensor> policy_tensors(game.total_player_count);
+      for (int p = 0; p < policies.size(); ++p)
+        if (game.player_alive(p))
+          policy_tensors[p] = torch::tensor(policies[p]).to(get_device());
+
+      std::vector<torch::Tensor> pv_tensors(game.total_player_count);
+      FOR_ALIVE_PLAYER(game, p) {
+        auto pv = game.player_view(p);
+        auto general_pos = game.generals_pos[p];
+        pv_tensors[p] = nn->encode(pv, game.tick, general_pos)
+                            .unsqueeze(0)
+                            .to(get_device());
+      }
+
+      FOR_ALIVE_PLAYER(game, p) {
+        game_data.emplace_back(pv_tensors[p], policy_tensors, values);
+      }
+
+      std::vector<game::Step> selected_steps(game.total_player_count);
+      FOR_ALIVE_PLAYER(game, p) {
+        selected_steps[p] =
+            nn->idx2step(policy_tensors[p].argmax().item<int>());
+      }
+
+      FOR_ALIVE_PLAYER(game, p) { game = game.apply(selected_steps[p]); }
+
+      game.next_turn();
+    }
+
+    std::vector<float> final_values(game.total_player_count, 0.f);
+    for (int p = 0; p < game.total_player_count; ++p)
+      if (game.player_alive(p))
+        final_values[p] = 1.f;
+      else
+        final_values[p] = -1.f;
+
+    for (auto &[_, __, values] : game_data)
+      values = final_values;
+
+    train_data.insert(train_data.end(), game_data.begin(), game_data.end());
+    spdlog::info("Game {}/{} finished, data size: {}", i + 1, n,
+                 game_data.size());
+  }
+
+  return train_data;
+};
+
+std::pair<torch::Tensor, torch::Tensor>
+calc_loss(const torch::Tensor &predicted_policy,
+          const torch::Tensor &predicted_value,
+          const torch::Tensor &target_policy, float target_value) {
+  auto policy_loss =
+      torch::sum(-target_policy * torch::log_softmax(predicted_policy, 1));
+  auto target_value_tensor = torch::tensor({target_value}).to(get_device());
+  auto value_loss = torch::mse_loss(predicted_value, target_value_tensor);
+  return {policy_loss, value_loss};
+}
+
+inline void train_step(
+    GeneralsNetwork &nn, torch::optim::AdamW &optimizer,
+    const std::vector<std::tuple<torch::Tensor, std::vector<torch::Tensor>,
+                                 std::vector<float>>> &batch) {
+  optimizer.zero_grad();
+  auto total_loss = torch::zeros({1}).to(get_device());
+
+  for (const auto &[state, target_policies, target_values] : batch)
+    for (int p = 0; p < target_policies.size(); ++p)
+      if (state.size(0) > p) {
+        auto [predicted_policy, predicted_value] =
+            nn->forward(state[p].unsqueeze(0));
+        auto [policy_loss, value_loss] =
+            calc_loss(predicted_policy, predicted_value, target_policies[p],
+                      target_values.at(p));
+        total_loss += policy_loss + value_loss;
+      }
+
+  total_loss = total_loss / static_cast<int>(batch.size());
+  total_loss.backward();
+  optimizer.step();
+}
+
+void train(std::filesystem::path network_path, unsigned int iter,
+           unsigned int game_n, unsigned int mcts_n, float e,
+           unsigned int batch_size) {
+  GeneralsNetwork nn;
+  try {
+    nn = network::load(network_path);
+  } catch (const std::exception &e) {
+    spdlog::error("Network not found");
+    return;
+  }
+  nn->to(get_device());
 
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_int_distribution<unsigned int> map_size{18, 25};
+  torch::optim::AdamW optimizer(nn->parameters(),
+                                torch::optim::AdamWOptions(1e-4));
 
-  spdlog::info("Loading network n1 from {}", n1_path);
-  try {
-    n1 = network::load(n1_path);
-  } catch (const c10::Error &) {
-    spdlog::error("Failed to load network n1");
-    return;
-  }
-  spdlog::info("Loading network n2 from {}", n2_path);
-  try {
-    n2 = network::load(n2_path);
-  } catch (const c10::Error &) {
-    spdlog::error("Failed to load network n2");
-    return;
-  }
-  n1->to(device);
-  n2->to(device);
+  for (int i = 0; i < iter; ++i) {
+    auto train_data = generate_self_play_data(nn, game_n, mcts_n, e);
+    std::shuffle(train_data.begin(), train_data.end(), gen);
 
-  auto n1_player = n1->player, n2_player = n2->player;
-
-  indicators::show_console_cursor(false);
-  indicators::ProgressBar bar{
-      indicators::option::BarWidth{50},
-      indicators::option::Start{"["},
-      indicators::option::Fill{"="},
-      indicators::option::Lead{">"},
-      indicators::option::Remainder{" "},
-      indicators::option::End{"]"},
-      indicators::option::ForegroundColor{indicators::Color::yellow},
-      indicators::option::ShowPercentage{true},
-      indicators::option::ShowElapsedTime{true},
-      indicators::option::ShowRemainingTime{true},
-      indicators::option::MaxProgress{game_nums},
-      indicators::option::PrefixText{"Training "},
-  };
-
-  for (int i = 0; i < game_nums; ++i) {
-    const auto w = map_size(gen), h = map_size(gen);
-    Game game{w, h, 2};
-    auto view1 = game.player_view(n1_player),
-         view2 = game.player_view(n2_player);
-
-    while (game.tick < max_ticks && !game.is_over()) {
-      auto [from_probs1, direction_probs1] =
-          n1->forward(view1.to_tensor(), view1.action_mask());
-      const auto &[from1, direction1] =
-          network::select_action(from_probs1, direction_probs1);
-      game.apply_inplace({n1_player, from1, direction1});
-
-      auto [from_probs2, direction_probs2] =
-          n2->forward(view2.to_tensor(), view2.action_mask());
-      const auto &[from2, direction2] =
-          network::select_action(from_probs2, direction_probs2);
-      game.apply_inplace({n2_player, from2, direction2});
-
-      auto loss1 = criterion(n1_player, game, from_probs1, direction_probs1,
-                             from1, direction1),
-           loss2 = criterion(n2_player, game, from_probs2, direction_probs2,
-                             from2, direction2);
-
-      n1_optimizer.zero_grad();
-      loss1.backward();
-      n1_optimizer.step();
-      n2_optimizer.zero_grad();
-      loss2.backward();
-      n2_optimizer.step();
+    for (int j = 0; j < train_data.size(); j += batch_size) {
+      auto end = std::min(j + batch_size,
+                          static_cast<unsigned int>(train_data.size()));
+      auto batch =
+          std::vector(train_data.begin() + j, train_data.begin() + end);
+      train_step(nn, optimizer, batch);
     }
-
-    n1_scheduler.step();
-    n2_scheduler.step();
-
-    bar.set_progress(i);
   }
-  indicators::show_console_cursor(true);
 
-  spdlog::info("Saving network n1 to {}", n1_path);
-  torch::save(n1, n1_path);
-
-  spdlog::info("Saving network n2 to {}", n2_path);
-  torch::save(n2, n2_path);
+  spdlog::info("Training finished, saving network");
+  network::save(nn, network_path);
 }
 
 } // namespace generals::train

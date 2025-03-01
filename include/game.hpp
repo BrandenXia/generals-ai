@@ -53,6 +53,8 @@ struct Step {
   enum class Direction : std::uint8_t { Up, Left, Down, Right } direction;
 };
 
+bool operator==(const Step &lhs, const Step &rhs);
+
 inline constexpr std::array<std::string, 4> direction_str = {"Up", "Left",
                                                              "Down", "Right"};
 inline auto format_as(const Step::Direction &direction) {
@@ -63,8 +65,8 @@ struct Game {
   std::vector<Tile> tiles;
   Board board;
   unsigned int tick;
-  unsigned short total_player_count;
-  unsigned short current_player_count;
+  unsigned int total_player_count;
+  unsigned int current_player_count;
   std::vector<Coord> generals_pos;
 
   explicit Game(unsigned int width, unsigned int height,

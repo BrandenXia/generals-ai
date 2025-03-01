@@ -18,12 +18,8 @@ int main(int argc, char *argv[]) {
         else if SAME_V (Info)
           std::cout << network::info(arg.network_path) << std::endl;
         else if SAME_V (Train)
-          train::train(arg.game_nums, arg.max_ticks, arg.network_path);
-        else if SAME_V (Interactive)
-          train::interactive_train(arg.network_path);
-        else if SAME_V (Bidirectional)
-          train::bidirectional_train(arg.game_nums, arg.max_ticks, arg.n1_path,
-                                     arg.n2_path);
+          train::train(arg.network_path, arg.iterations, arg.game_num,
+                       arg.mcts_num, arg.exploration_constant, arg.batch_size);
         else
           std::cerr << "No valid command provided" << std::endl;
       },

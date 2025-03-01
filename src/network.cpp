@@ -60,7 +60,7 @@ torch::Tensor action_mask(torch::Tensor x) {
 }
 
 GeneralsNetworkImpl::GeneralsNetworkImpl()
-    : GeneralsNetworkImpl(std::nullopt, {0, 0}) {}
+    : GeneralsNetworkImpl(std::nullopt, {1, 1}) {}
 
 GeneralsNetworkImpl::GeneralsNetworkImpl(game::Player p, std::pair<int, int> s)
     : player(p), max_size(s),
