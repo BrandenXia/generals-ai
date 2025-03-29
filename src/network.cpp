@@ -54,7 +54,7 @@ inline constexpr auto META_MAX_SIZE_KEY = "max_size";
 inline constexpr unsigned int num_channels = 64;
 inline constexpr unsigned int num_resnet_blocks = 10;
 
-torch::Tensor action_mask(torch::Tensor x) {
+inline torch::Tensor action_mask(torch::Tensor x) {
   auto f = x[3].flatten();
   return torch::cat({f, f, f, f});
 }
@@ -110,9 +110,9 @@ constexpr unsigned int MAX_TICK = 500;
 // 11. tick, normalized by max tick
 // 12. all 1s
 // 13. all 0s
-torch::Tensor GeneralsNetworkImpl::encode(const PlayerBoard &board,
-                                          unsigned int tick,
-                                          game::Coord general) const {
+std::pair<torch::Tensor, torch::Tensor>
+GeneralsNetworkImpl::encode(const PlayerBoard &board, unsigned int tick,
+                            game::Coord general) const {
   unsigned int h = board.extent(0);
   unsigned int w = board.extent(1);
   auto player = board.player;
@@ -154,22 +154,24 @@ torch::Tensor GeneralsNetworkImpl::encode(const PlayerBoard &board,
   x[2] = torch::nn::functional::normalize(x[0][2]);
 
   // pad the tensor to top left
-  return torch::nn::functional::pad(
+  x = torch::nn::functional::pad(
       x, torch::nn::functional::PadFuncOptions(
              {0, max_size.second - w, 0, max_size.first - h})
              .mode(torch::kConstant));
+  auto mask = action_mask(x.unsqueeze(0)).unsqueeze(0) == 0;
+
+  return {x, mask};
 }
 
 std::pair<at::Tensor, at::Tensor>
-GeneralsNetworkImpl::forward(torch::Tensor x) {
+GeneralsNetworkImpl::forward(torch::Tensor x, torch::Tensor mask) {
   auto x0 = input_layers->forward(x);
   auto x1 = resnet_block->forward(x);
 
   auto policy = policy_conv->forward(x1);
   policy = policy.view({-1, 2 * max_size.first * max_size.second});
   policy = policy_fc->forward(policy);
-  policy =
-      policy.masked_fill(action_mask(x.squeeze(0)).unsqueeze(0) == 0, -1e9);
+  policy = policy.masked_fill(mask, -1e9);
   policy = torch::softmax(policy, 1);
 
   auto value = value_conv->forward(x1);

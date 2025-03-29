@@ -40,10 +40,12 @@ struct GeneralsNetworkImpl : torch::nn::Module {
   GeneralsNetworkImpl();
   GeneralsNetworkImpl(game::Player player, std::pair<int, int> max_size);
 
-  torch::Tensor encode(const PlayerBoard &board, unsigned int tick,
-                       game::Coord general) const;
+  std::pair<torch::Tensor, torch::Tensor> encode(const PlayerBoard &board,
+                                                 unsigned int tick,
+                                                 game::Coord general) const;
 
-  std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x);
+  std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x,
+                                                  torch::Tensor mask);
 
   // convert policy index to step
   game::Step idx2step(unsigned int idx) const;
