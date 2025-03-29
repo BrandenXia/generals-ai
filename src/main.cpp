@@ -1,5 +1,3 @@
-#include <torch/serialize.h>
-
 #include "cli.hpp"
 #include "network.hpp"
 #include "train.hpp"
@@ -15,12 +13,9 @@ int main(int argc, char *argv[]) {
       [](auto &&arg) {
         using T = std::decay_t<decltype(arg)>;
 
-        if SAME_V (Create) {
-          GeneralsNetwork network{arg.player, arg.max_size};
-          torch::save(network, arg.network_path);
-          std::cout << "Network created and saved to " << arg.network_path
-                    << std::endl;
-        } else if SAME_V (Info)
+        if SAME_V (Create)
+          network::create(arg.player, arg.max_size, arg.network_path);
+        else if SAME_V (Info)
           std::cout << network::info(arg.network_path) << std::endl;
         else if SAME_V (Train)
           train::train(arg.game_nums, arg.max_ticks, arg.network_path);

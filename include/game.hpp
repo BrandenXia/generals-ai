@@ -43,8 +43,6 @@ struct PlayerBoard : Board {
 
   bool is_unknown(std::size_t i, std::size_t j) const;
   const Tile &operator[](std::size_t i, std::size_t j) const;
-  at::Tensor to_tensor() const;
-  at::Tensor action_mask() const;
 };
 
 using Coord = std::pair<unsigned int, unsigned int>;
@@ -52,11 +50,11 @@ using Coord = std::pair<unsigned int, unsigned int>;
 struct Step {
   Player player;
   Coord from;
-  enum class Direction : std::uint8_t { Up, Down, Left, Right } direction;
+  enum class Direction : std::uint8_t { Up, Left, Down, Right } direction;
 };
 
-inline constexpr std::array<std::string, 4> direction_str = {"Up", "Down",
-                                                             "Left", "Right"};
+inline constexpr std::array<std::string, 4> direction_str = {"Up", "Left",
+                                                             "Down", "Right"};
 inline auto format_as(const Step::Direction &direction) {
   return direction_str[static_cast<int>(direction)];
 }
@@ -65,8 +63,9 @@ struct Game {
   std::vector<Tile> tiles;
   Board board;
   unsigned int tick;
-  unsigned short total_player;
-  unsigned short current_player;
+  unsigned short total_player_count;
+  unsigned short current_player_count;
+  std::vector<Coord> generals_pos;
 
   explicit Game(unsigned int width, unsigned int height,
                 unsigned int player_count);
@@ -75,7 +74,12 @@ struct Game {
   Game apply(const Step &step) const;
   void apply_inplace(const Step &step);
   void next_turn();
-  inline bool is_over() const { return current_player <= 1; }
+  inline bool player_alive(Player player) const {
+    return player.has_value() &&
+           board[generals_pos[*player].first, generals_pos[*player].second]
+                   .type == Type::General;
+  }
+  inline bool is_over() const { return current_player_count <= 1; }
 };
 
 } // namespace generals::game
