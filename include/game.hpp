@@ -1,107 +1,162 @@
-#ifndef GENERALS_GAME_HPP
-#define GENERALS_GAME_HPP
+#ifndef GENERALS_GAME_H
+#define GENERALS_GAME_H
 
-#include <ATen/core/TensorBody.h>
-#include <cstddef>
 #include <cstdint>
-#include <format>
-#include <magic_enum/magic_enum.hpp>
+#include <functional>
 #include <mdspan>
 #include <optional>
 #include <vector>
 
 namespace generals::game {
 
-using Player = std::optional<uint8_t>;
+struct Offset {
+  std::int8_t x;
+  std::int8_t y;
 
-enum class Type {
-  Blank,
-  Mountain,
-  City,
-  General,
-  // Only for player view
-  Unknown,
-  UnknownObstacles
+  inline constexpr Offset operator+(const Offset &other) const {
+    return {static_cast<int8_t>(x + other.x), static_cast<int8_t>(y + other.y)};
+  }
+  inline constexpr Offset operator-() const {
+    return {static_cast<int8_t>(-x), static_cast<int8_t>(-y)};
+  }
+  inline constexpr Offset operator-(const Offset &other) const {
+    return this->operator+(-other);
+  }
+  inline constexpr Offset operator*(int factor) const {
+    return {static_cast<int8_t>(x * factor), static_cast<int8_t>(y * factor)};
+  }
+  inline constexpr bool operator==(const Offset &other) const {
+    return x == other.x && y == other.y;
+  }
+  inline constexpr bool operator!=(const Offset &other) const {
+    return !(*this == other);
+  }
 };
-constexpr inline std::uint8_t type_count = magic_enum::enum_count<Type>();
 
+struct Pos {
+  std::uint8_t x;
+  std::uint8_t y;
+
+  inline constexpr Pos operator+(const Offset &offset) const {
+    return {static_cast<uint8_t>(x + offset.x),
+            static_cast<uint8_t>(y + offset.y)};
+  }
+  inline constexpr Pos operator-(const Offset &offset) const {
+    return {static_cast<uint8_t>(x - offset.x),
+            static_cast<uint8_t>(y - offset.y)};
+  }
+};
+
+enum class Type : std::uint8_t { Blank, Mountain, City, General };
+
+struct Player;
+struct MaybePlayer;
+
+struct Player {
+  std::uint8_t id;
+
+  inline constexpr operator MaybePlayer() const;
+};
+
+struct MaybePlayer {
+  std::uint8_t id;
+
+  inline constexpr operator std::uint32_t() const { return id; }
+  inline constexpr bool has_player() const;
+  inline constexpr std::optional<Player> to_player() const;
+};
+
+inline constexpr Player::operator MaybePlayer() const { return {id}; }
+
+inline constexpr bool MaybePlayer::has_player() const { return id == 0; }
+
+inline constexpr std::optional<Player> MaybePlayer::to_player() const {
+  return id == 0 ? std::nullopt : std::optional<Player>{{id}};
+}
+
+namespace {
+
+inline constexpr uint32_t make_mask(int s, int p) {
+  return ((1u << s) - 1) << p;
+}
+
+inline constexpr std::uint8_t TILE_TYPE_LEN = 2;
+inline constexpr std::uint8_t TILE_PLAYER_LEN = 3;
+inline constexpr std::uint8_t TILE_ARMY_LEN = 27;
+
+template <typename T, std::size_t S, std::size_t P>
+  requires(sizeof(T) <= sizeof(std::uint32_t))
+struct TileDataAccessor {
+private:
+  inline static constexpr std::uint32_t mask = make_mask(S, P);
+  std::reference_wrapper<std::uint32_t> data;
+
+public:
+  constexpr TileDataAccessor(std::uint32_t &data) : data(data) {}
+
+  inline constexpr operator T() const { return (data & mask) >> P; }
+  inline constexpr void operator=(T value) const {
+    auto &ref = data.get();
+    ref = (ref & ~mask) | ((static_cast<std::uint32_t>(value) << P) & mask);
+  }
+};
+
+} // namespace
+
+// Tile = Type (2 bits) | player (3 bits) | army (everything else)
 struct Tile {
-  Type type;
-  unsigned int army;
-  Player owner;
+private:
+  std::uint32_t data;
 
-  constexpr explicit Tile(Type t) : type(t), army(0), owner(std::nullopt) {}
-  explicit Tile(Type t, Player o, unsigned int a)
-      : type(t), army(a), owner(o) {}
+public:
+  Pos pos;
+
+  template <typename T, std::size_t S, std::size_t P>
+  using Accessor = TileDataAccessor<T, S, P>;
+  Accessor<Type, TILE_TYPE_LEN, 0> type{data};
+  Accessor<MaybePlayer, TILE_PLAYER_LEN, TILE_TYPE_LEN> player{data};
+  Accessor<std::uint32_t, TILE_ARMY_LEN, TILE_PLAYER_LEN + TILE_TYPE_LEN> army{
+      data};
+
+  inline constexpr Tile(Type type, MaybePlayer player, std::uint32_t army,
+                        Pos p)
+      : data(static_cast<std::uint32_t>(type) |
+             (static_cast<std::uint32_t>(player.id) << 2) | (army << 6)),
+        pos(p) {}
+  inline constexpr Tile(Type type, Pos p)
+      : data(static_cast<std::uint32_t>(type)), pos(p) {}
+  inline constexpr Tile(Pos p) : Tile{Type::Blank, p} {}
 };
 
 using Board = std::mdspan<Tile, std::dextents<std::size_t, 2>>;
-;
 
-struct PlayerBoard : Board {
+struct PlayerInfo {
   Player player;
+  bool alive = true;
+  Pos general;
 
-  bool is_unknown(std::size_t i, std::size_t j) const;
-  const Tile &operator[](std::size_t i, std::size_t j) const;
+  inline constexpr PlayerInfo(Player p, Pos g) : player(p), general(g) {};
 };
-
-using Coord = std::pair<unsigned int, unsigned int>;
-
-struct Step {
-  Player player;
-  Coord from;
-  enum class Direction : std::uint8_t { Up, Left, Down, Right } direction;
-};
-
-inline constexpr std::array<std::string, 4> direction_str = {"Up", "Left",
-                                                             "Down", "Right"};
-inline auto format_as(const Step::Direction &direction) {
-  return direction_str[static_cast<int>(direction)];
-}
 
 struct Game {
   std::vector<Tile> tiles;
   Board board;
-  unsigned int tick;
-  unsigned short total_player_count;
-  unsigned short current_player_count;
-  std::vector<Coord> generals_pos;
+  std::uint8_t player_count = 2;
+  std::uint32_t turn = 0;
+  std::uint8_t width;
+  std::uint8_t height;
+  std::vector<PlayerInfo> players;
 
-  explicit Game(unsigned int width, unsigned int height,
-                unsigned int player_count);
-  Game(const Game &);
-  PlayerBoard player_view(Player player) const;
-  Game apply(const Step &step) const;
-  void apply_inplace(const Step &step);
-  void next_turn();
-  inline bool player_alive(Player player) const {
-    return player.has_value() &&
-           board[generals_pos[*player].first, generals_pos[*player].second]
-                   .type == Type::General;
-  }
-  inline bool is_over() const { return current_player_count <= 1; }
+  constexpr Game(std::uint8_t width, std::uint8_t height,
+                 std::uint8_t player_count = 2);
 };
+
+namespace player {
+
+enum class Type { Blank, Mountain, City, General, Unknown, UnknownObstacles };
+
+} // namespace player
 
 } // namespace generals::game
-
-namespace generals {
-
-using game::Game, game::PlayerBoard;
-
-}
-
-template <>
-struct std::formatter<generals::game::Player, char> {
-  template <class ParseContext>
-  constexpr auto parse(ParseContext &ctx) {
-    return ctx.begin();
-  }
-
-  template <class FormatContext>
-  auto format(generals::game::Player player, FormatContext &ctx) const {
-    return std::format_to(ctx.out(), "{}",
-                          player.has_value() ? static_cast<int>(*player) : -1);
-  }
-};
 
 #endif

@@ -22,11 +22,6 @@ target_compile_definitions(generals_ai PRIVATE
   $<$<CONFIG:Debug>:DEBUG>
 )
 
-# libtorch
-find_package(Torch REQUIRED)
-include_directories(${TORCH_INCLUDE_DIRS})
-target_link_libraries(generals_ai PRIVATE "${TORCH_LIBRARIES}")
-
 # raylib
 find_package(raylib REQUIRED)
 include_directories(${RAYLIB_INCLUDE_DIRS})
@@ -36,7 +31,3 @@ if (APPLE)
   target_link_libraries(generals_ai PRIVATE "-framework Cocoa")
   target_link_libraries(generals_ai PRIVATE "-framework OpenGL")
 endif()
-
-find_package(spdlog CONFIG REQUIRED)
-include_directories(${SPDLOG_INCLUDE_DIRS})
-target_link_libraries(generals_ai PRIVATE spdlog::spdlog)
