@@ -1,6 +1,8 @@
 #include "game.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <iterator>
 #include <random>
 #include <vector>
@@ -15,7 +17,8 @@ inline unsigned int manhattanDistance(unsigned int x1, unsigned int y1,
 }
 
 constexpr Game::Game(std::uint8_t w, std::uint8_t h, std::uint8_t player_count)
-    : player_count(player_count), width(w), height(h) {
+    : player_count(player_count), alive_count(player_count), width(w),
+      height(h) {
   const unsigned int map_size = w * h;
   tiles.reserve(map_size);
   for (unsigned int i = 0; i < map_size; ++i)
@@ -60,14 +63,65 @@ constexpr Game::Game(std::uint8_t w, std::uint8_t h, std::uint8_t player_count)
 
     const auto &t = tiles[pos];
     t.type = Type::General;
-    auto player = Player{static_cast<uint8_t>(players.size())};
-    t.player = player;
+    auto player = Player{static_cast<uint8_t>(players.size() + 1)};
+    t.owner = player;
     t.army = 1;
 
     return {player, {x, y}};
   });
 
-  board = Board{tiles.data(), w, h};
+  board = {tiles.data(), w, h};
+}
+
+inline constexpr std::array<coord::Offset, 4> directions = {
+    {{-1, 0}, {1, 0}, {0, -1}, {0, 1}}};
+void Game::apply(Move move) {
+  const auto &from = board[move.from];
+  if (from.owner != move.player) return;
+  if (from.army <= 1) return;
+
+  const auto &offset = directions[static_cast<std::size_t>(move.direction)];
+  const auto to_pos = move.from + offset;
+
+  if (!to_pos.valid(width, height)) return;
+
+  const auto &to = board[to_pos];
+
+  if (to.type == Type::Mountain) return;
+
+  from.army = 1;
+  if (to.owner == move.player)
+    to.army += from.army - 1; // move all but one army
+  else {
+    // fight
+    const auto army = static_cast<int>(from.army) - static_cast<int>(to.army);
+    to.army = static_cast<std::uint32_t>(std::abs(army));
+
+    if (army > 0) {
+      const MaybePlayer original_owner = to.owner;
+      to.owner = move.player; // player wins
+
+      if (to.type == Type::General) {
+        to.type = Type::City;
+        get_info(original_owner.to_player().value())->alive = false;
+        alive_count--;
+      }
+    }
+  }
+}
+
+void Game::next_tick() {
+  tick++;
+
+  const auto div_by_2 = tick % 2 == 0;
+  const auto div_by_25 = tick % 25 == 0;
+  std::ranges::for_each(tiles, [&](auto &tile) {
+    if ((div_by_2 && (tile.type == Type::City && tile.has_owner())) ||
+        tile.type == Type::General)
+      tile.army += 1u;
+    if (div_by_25 && tile.type == Type::Blank && tile.has_owner())
+      tile.army += 1u;
+  });
 }
 
 } // namespace generals::game
