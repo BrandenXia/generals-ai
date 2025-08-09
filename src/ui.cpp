@@ -29,7 +29,7 @@ void draw_frame(const Game &game) {
   ClearBackground(LIGHTGRAY);
   for (game::coord::pos_t i = 0; i < game.height; i++)
     for (game::coord::pos_t j = 0; j < game.width; j++) {
-      const auto &tile = game.board[{i, j}];
+      const auto &tile = game.board[i, j];
       const auto offsetI = i * TILE_WITH_BORDER;
       const auto offsetJ = j * TILE_WITH_BORDER;
 

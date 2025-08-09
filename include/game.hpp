@@ -1,5 +1,5 @@
-#ifndef GENERALS_GAME_H
-#define GENERALS_GAME_H
+#ifndef GENERALS_GAME_HPP
+#define GENERALS_GAME_HPP
 
 #include <algorithm>
 #include <concepts>
@@ -87,7 +87,7 @@ struct MaybePlayer {
 
 inline constexpr Player::operator MaybePlayer() const { return {id}; }
 
-inline constexpr bool MaybePlayer::has_player() const { return id == 0; }
+inline constexpr bool MaybePlayer::has_player() const { return id != 0; }
 
 inline constexpr std::optional<Player> MaybePlayer::to_player() const {
   return id == 0 ? std::nullopt : std::optional<Player>{{id}};
@@ -103,25 +103,27 @@ inline constexpr std::uint8_t TILE_TYPE_LEN = 2;
 inline constexpr std::uint8_t TILE_PLAYER_LEN = 3;
 inline constexpr std::uint8_t TILE_ARMY_LEN = 27;
 
-template <typename T, std::size_t S, std::size_t P>
+template <typename T, std::uint8_t S, std::uint8_t P>
   requires(sizeof(T) <= sizeof(std::uint32_t))
 struct TileDataAccessor {
+  using value_type = T;
+
 private:
   inline static constexpr std::uint32_t mask = make_mask(S, P);
   std::reference_wrapper<std::uint32_t> data;
 
 public:
-  constexpr TileDataAccessor(std::uint32_t &data) : data(data) {}
+  constexpr TileDataAccessor(std::uint32_t &data) : data(std::ref(data)) {}
 
-  inline constexpr operator T() const {
+  inline constexpr operator value_type() const {
     return static_cast<T>((data & mask) >> P);
   }
-  inline constexpr void operator=(T value) const {
+  inline constexpr void operator=(value_type value) const {
     auto &ref = data.get();
     ref = (ref & ~mask) | ((static_cast<std::uint32_t>(value) << P) & mask);
   }
-  inline constexpr bool operator==(T value) const {
-    return operator T() == value;
+  inline constexpr bool operator==(value_type value) const {
+    return operator value_type() == value;
   }
 
 #define INTEGRAL_OP(op)                                                        \
@@ -138,10 +140,10 @@ public:
 
 } // namespace
 
-// Tile = Type (2 bits) | player (3 bits) | army (everything else)
+// Tile = army (27 bits) | player (3 bits) | type (2 bits)
 struct Tile {
 private:
-  std::uint32_t data;
+  std::uint32_t data = 0;
 
 public:
   coord::Pos pos;
@@ -156,11 +158,33 @@ public:
   inline constexpr Tile(Type type, MaybePlayer player, std::uint32_t army,
                         coord::Pos p)
       : data(static_cast<std::uint32_t>(type) |
-             (static_cast<std::uint32_t>(player.id) << 2) | (army << 6)),
+             (static_cast<std::uint32_t>(player.id) << TILE_TYPE_LEN) |
+             (army << (TILE_PLAYER_LEN + TILE_TYPE_LEN))),
         pos(p) {}
-  inline constexpr Tile(Type type, coord::Pos p)
-      : data(static_cast<std::uint32_t>(type)), pos(p) {}
+  inline constexpr Tile(Type type, coord::Pos p) : Tile{type, 0, 0, p} {}
   inline constexpr Tile(coord::Pos p) : Tile{Type::Blank, p} {}
+
+  inline constexpr Tile(const Tile &other) noexcept
+      : data(other.data), pos(other.pos), type(data), owner(data), army(data) {}
+  inline constexpr Tile(Tile &&other) noexcept
+      : data(other.data), pos(other.pos), type(data), owner(data), army(data) {
+    other.data = 0;
+  }
+  inline constexpr Tile &operator=(const Tile &other) noexcept {
+    if (this != &other) {
+      data = other.data;
+      pos = other.pos;
+    }
+    return *this;
+  }
+  inline constexpr Tile &operator=(Tile &&other) noexcept {
+    if (this != &other) {
+      data = other.data;
+      pos = other.pos;
+      other.data = 0;
+    }
+    return *this;
+  }
 
   inline constexpr bool has_owner() const {
     return owner.operator MaybePlayer().has_player();
@@ -175,6 +199,15 @@ struct Board : public _Board {
 
   inline constexpr auto operator[](coord::Pos pos) const {
     return _Board::operator[](pos.x, pos.y);
+  }
+  inline constexpr auto &operator[](coord::Pos pos) {
+    return _Board::operator[](pos.x, pos.y);
+  }
+  inline constexpr auto operator[](coord::pos_t x, coord::pos_t y) const {
+    return _Board::operator[](x, y);
+  }
+  inline constexpr auto &operator[](coord::pos_t x, coord::pos_t y) {
+    return _Board::operator[](x, y);
   }
 };
 
@@ -193,6 +226,12 @@ struct Move {
   enum class Direction : std::uint8_t { Up, Left, Down, Right } direction : 2;
 };
 
+namespace player {
+
+struct PlayerView;
+
+}
+
 struct Game {
   std::uint32_t turn = 0;
   std::uint16_t tick;
@@ -204,8 +243,7 @@ struct Game {
   std::vector<Tile> tiles;
   std::vector<PlayerInfo> players;
 
-  constexpr Game(std::uint8_t width, std::uint8_t height,
-                 std::uint8_t player_count = 2);
+  Game(std::uint8_t width, std::uint8_t height, std::uint8_t player_count = 2);
 
   void apply(Move move);
   void next_tick();
@@ -217,10 +255,18 @@ struct Game {
   inline constexpr bool player_alive(const Player &player) const {
     return const_cast<Game *>(this)->get_info(player)->alive;
   }
-  inline constexpr bool is_over() const { return alive_count <= 1; }
+  inline constexpr std::optional<Player> is_over() const {
+    if (alive_count == 1)
+      return std::ranges::find_if(players,
+                                  [](const auto &info) { return info.alive; })
+          ->player;
+    else
+      return std::nullopt;
+  }
+  inline constexpr player::PlayerView player_view(Player player) const;
 
-  inline constexpr void operator+=(Move move) { apply(move); }
-  inline constexpr Game operator+(Move move) {
+  inline void operator+=(Move move) { apply(move); }
+  inline Game operator+(Move move) {
     auto copy = *this;
     operator+=(move);
     return copy;
@@ -231,8 +277,104 @@ namespace player {
 
 enum class Type { Blank, Mountain, City, General, Unknown, UnknownObstacles };
 
+namespace {
+
+inline constexpr std::array<coord::Offset, 8> surround = {
+    {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}};
+
+#define TILE_ATTR_T(attr) decltype(Tile::attr)::value_type
+
+template <typename T>
+struct PlayerTileAttrAccessor {
+private:
+  Board &board;
+  Tile &tile;
+  Player player;
+
+public:
+  inline constexpr PlayerTileAttrAccessor(Board &b, Tile &t, Player p)
+      : board(b), tile(t), player(p) {}
+
+#define TILE_ACCESSOR_METH_SIG(attr)                                           \
+  template <typename U = T>                                                    \
+    requires std::is_same_v<U, TILE_ATTR_T(attr)>                              \
+  inline constexpr operator T() const
+
+#define TILE_ACCESSOR_METH(attr)                                               \
+  TILE_ACCESSOR_METH_SIG(attr) { return tile.attr; }
+
+  TILE_ACCESSOR_METH(army)
+  TILE_ACCESSOR_METH(owner)
+
+#undef TILE_ACCESSOR_METH
+#undef TILE_ACCESSOR_METH_SIG
+
+  template <typename U = T>
+    requires std::is_same_v<U, TILE_ATTR_T(type)>
+  inline constexpr operator Type() const {
+    if (std::ranges::any_of(surround, [&](const auto &offset) {
+          const auto pos = tile.pos + offset;
+          return pos.owner == player;
+        }))
+      return static_cast<Type>(tile.type.operator game::Type());
+    else
+      return tile.type == game::Type::Blank ? Type::Unknown
+                                            : Type::UnknownObstacles;
+  }
+};
+
+#define PLAYER_TILE_ATTR_ACCESSOR(attr)                                        \
+  PlayerTileAttrAccessor<TILE_ATTR_T(attr)> attr { board, tile, player }
+
+struct PlayerViewTileAccessor {
+private:
+  Board &board;
+  Tile &tile;
+  Player player;
+
+public:
+  inline constexpr PlayerViewTileAccessor(Board &b, Tile &t, Player p)
+      : board(b), tile(t), player(p) {}
+
+  PLAYER_TILE_ATTR_ACCESSOR(army);
+  PLAYER_TILE_ATTR_ACCESSOR(owner);
+  PLAYER_TILE_ATTR_ACCESSOR(type);
+};
+
+#undef PLAYER_TILE_ATTR_ACCESSOR
+#undef TILE_ATTR_T
+
+} // namespace
+
+struct PlayerView {
+private:
+  Game &game;
+
+public:
+  Player player;
+
+  inline constexpr PlayerView(Game &g, Player p) : game(g), player(p) {}
+  inline constexpr PlayerViewTileAccessor operator[](coord::Pos pos) {
+    return PlayerViewTileAccessor{game.board, game.board[pos], player};
+  }
+  inline constexpr PlayerViewTileAccessor operator[](coord::pos_t x,
+                                                     coord::pos_t y) {
+    return PlayerViewTileAccessor{game.board, game.board[x, y], player};
+  }
+};
+
 } // namespace player
 
+inline constexpr player::PlayerView Game::player_view(Player player) const {
+  return player::PlayerView{const_cast<Game &>(*this), player};
+}
+
 } // namespace generals::game
+
+namespace generals {
+
+using game::Game;
+
+}
 
 #endif

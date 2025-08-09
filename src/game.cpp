@@ -16,7 +16,7 @@ inline unsigned int manhattanDistance(unsigned int x1, unsigned int y1,
       std::abs(static_cast<int>(y1) - static_cast<int>(y2)));
 }
 
-constexpr Game::Game(std::uint8_t w, std::uint8_t h, std::uint8_t player_count)
+Game::Game(std::uint8_t w, std::uint8_t h, std::uint8_t player_count)
     : player_count(player_count), alive_count(player_count), width(w),
       height(h) {
   const unsigned int map_size = w * h;
@@ -113,10 +113,9 @@ void Game::apply(Move move) {
 void Game::next_tick() {
   tick++;
 
-  const auto div_by_2 = tick % 2 == 0;
   const auto div_by_25 = tick % 25 == 0;
   std::ranges::for_each(tiles, [&](auto &tile) {
-    if ((div_by_2 && (tile.type == Type::City && tile.has_owner())) ||
+    if ((tile.type == Type::City && tile.has_owner()) ||
         tile.type == Type::General)
       tile.army += 1u;
     if (div_by_25 && tile.type == Type::Blank && tile.has_owner())
