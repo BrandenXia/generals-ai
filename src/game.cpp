@@ -74,7 +74,7 @@ Game::Game(std::uint8_t w, std::uint8_t h, std::uint8_t player_count)
 }
 
 inline constexpr std::array<coord::Offset, 4> directions = {
-    {{-1, 0}, {1, 0}, {0, -1}, {0, 1}}};
+    {{-1, 0}, {0, -1}, {1, 0}, {0, 1}}};
 void Game::apply(Move move) {
   const auto &from = board[move.from];
   if (from.owner != move.player) return;
@@ -89,12 +89,12 @@ void Game::apply(Move move) {
 
   if (to.type == Type::Mountain) return;
 
-  from.army = 1;
   if (to.owner == move.player)
     to.army += from.army - 1; // move all but one army
   else {
     // fight
-    const auto army = static_cast<int>(from.army) - static_cast<int>(to.army);
+    const auto army =
+        static_cast<int>(from.army) - static_cast<int>(to.army) - 1;
     to.army = static_cast<std::uint32_t>(std::abs(army));
 
     if (army > 0) {
@@ -108,6 +108,7 @@ void Game::apply(Move move) {
       }
     }
   }
+  from.army = 1;
 }
 
 void Game::next_tick() {

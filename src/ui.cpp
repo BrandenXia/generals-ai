@@ -68,4 +68,29 @@ std::pair<game::coord::Pos, Rectangle> get_tile_rect(const Game &,
   return {{i, j}, rect};
 }
 
+void ui_loop(const Game &game, std::function<void()> callback) {
+  ui::init_window(game);
+
+  bool closed_by_player = false;
+
+  while (!(closed_by_player = WindowShouldClose()) && !game.is_over()) {
+    BeginDrawing();
+
+    draw_frame(game);
+    callback();
+
+    EndDrawing();
+  }
+
+  if (game.is_over())
+    // wait for the player to close the window
+    while (!WindowShouldClose()) {
+      BeginDrawing();
+      draw_frame(game);
+      EndDrawing();
+    }
+
+  CloseWindow();
+}
+
 } // namespace generals::ui

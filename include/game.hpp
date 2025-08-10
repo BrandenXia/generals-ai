@@ -8,6 +8,7 @@
 #include <mdspan>
 #include <optional>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace generals::game {
@@ -116,7 +117,7 @@ public:
   constexpr TileDataAccessor(std::uint32_t &data) : data(std::ref(data)) {}
 
   inline constexpr operator value_type() const {
-    return static_cast<T>((data & mask) >> P);
+    return static_cast<value_type>((data & mask) >> P);
   }
   inline constexpr void operator=(value_type value) const {
     auto &ref = data.get();
@@ -165,9 +166,9 @@ public:
   inline constexpr Tile(coord::Pos p) : Tile{Type::Blank, p} {}
 
   inline constexpr Tile(const Tile &other) noexcept
-      : data(other.data), pos(other.pos), type(data), owner(data), army(data) {}
+      : data(other.data), pos(other.pos) {}
   inline constexpr Tile(Tile &&other) noexcept
-      : data(other.data), pos(other.pos), type(data), owner(data), army(data) {
+      : data(other.data), pos(std::move(other.pos)) {
     other.data = 0;
   }
   inline constexpr Tile &operator=(const Tile &other) noexcept {
@@ -180,7 +181,7 @@ public:
   inline constexpr Tile &operator=(Tile &&other) noexcept {
     if (this != &other) {
       data = other.data;
-      pos = other.pos;
+      pos = std::move(other.pos);
       other.data = 0;
     }
     return *this;
