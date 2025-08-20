@@ -198,17 +198,13 @@ struct Board : public _Board {
       : _Board(data, width, height) {}
   inline constexpr Board() : _Board() {}
 
+  using _Board::operator[];
+
   inline constexpr auto operator[](coord::Pos pos) const {
-    return _Board::operator[](pos.x, pos.y);
+    return operator[](pos.x, pos.y);
   }
   inline constexpr auto &operator[](coord::Pos pos) {
-    return _Board::operator[](pos.x, pos.y);
-  }
-  inline constexpr auto operator[](coord::pos_t x, coord::pos_t y) const {
-    return _Board::operator[](x, y);
-  }
-  inline constexpr auto &operator[](coord::pos_t x, coord::pos_t y) {
-    return _Board::operator[](x, y);
+    return operator[](pos.x, pos.y);
   }
 };
 
