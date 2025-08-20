@@ -1,7 +1,7 @@
 #ifndef GENERALS_EVAL_HPP
 #define GENERALS_EVAL_HPP
 
-#include <concepts>
+#include <proxy/proxy.h>
 
 #include "game.hpp"
 
@@ -9,11 +9,15 @@ namespace generals::eval {
 
 using score_t = double;
 
-template <typename T>
-concept Evaluator = requires(T eval, game::player::PlayerView view) {
-  // gives possiblity of this player winning, [0, 1]
-  { eval(view) } -> std::convertible_to<score_t>;
-};
+// clang-format off
+struct Evaluator : pro::facade_builder
+  ::add_convention<
+      // returns the possibility of winning, [0, 1]
+      pro::operator_dispatch<"()">,
+      score_t(const game::player::PlayerView &) const
+    >
+  ::build {};
+// clang-format on
 
 } // namespace generals::eval
 
