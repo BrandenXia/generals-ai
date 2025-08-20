@@ -1,10 +1,15 @@
 #ifndef GENERALS_UI_HPP
 #define GENERALS_UI_HPP
 
-#include <raylib.h>
 #include <utility>
 
 #include "game.hpp"
+
+// forward declarations of raylib structs
+extern "C" {
+struct Rectangle;
+struct Vector2;
+}
 
 namespace generals::ui {
 
