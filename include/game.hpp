@@ -284,30 +284,30 @@ inline constexpr std::array<coord::Offset, 8> surround = {
 template <typename T>
 struct PlayerTileAttrAccessor {
 private:
-  Board &board;
-  Tile &tile;
+  const Board &board;
+  const Tile &tile;
   Player player;
 
 public:
-  inline constexpr PlayerTileAttrAccessor(Board &b, Tile &t, Player p)
+  inline constexpr PlayerTileAttrAccessor(const Board &b, const Tile &t,
+                                          Player p)
       : board(b), tile(t), player(p) {}
 
-#define TILE_ACCESSOR_METH_SIG(attr)                                           \
+#define TILE_ACCESSOR_METH_TEMPLATE(attr)                                      \
   template <typename U = T>                                                    \
-    requires std::is_same_v<U, TILE_ATTR_T(attr)>                              \
-  inline constexpr operator T() const
+    requires std::is_same_v<U, TILE_ATTR_T(attr)>
+
+#define TILE_ACCESSOR_METH_SIG(attr) inline constexpr operator T() const
 
 #define TILE_ACCESSOR_METH(attr)                                               \
-  TILE_ACCESSOR_METH_SIG(attr) { return tile.attr; }
+  TILE_ACCESSOR_METH_TEMPLATE(attr) TILE_ACCESSOR_METH_SIG(attr) {             \
+    return tile.attr;                                                          \
+  }
 
   TILE_ACCESSOR_METH(army)
   TILE_ACCESSOR_METH(owner)
 
-#undef TILE_ACCESSOR_METH
-#undef TILE_ACCESSOR_METH_SIG
-
-  template <typename U = T>
-    requires std::is_same_v<U, TILE_ATTR_T(type)>
+  TILE_ACCESSOR_METH_TEMPLATE(type)
   inline constexpr operator Type() const {
     if (std::ranges::any_of(surround, [&](const auto &offset) {
           const auto pos = tile.pos + offset;
@@ -318,6 +318,10 @@ public:
       return tile.type == game::Type::Blank ? Type::Unknown
                                             : Type::UnknownObstacles;
   }
+
+#undef TILE_ACCESSOR_METH
+#undef TILE_ACCESSOR_METH_SIG
+#undef TILE_ACCESSOR_METH_TEMPLATE
 };
 
 #define PLAYER_TILE_ATTR_ACCESSOR(attr)                                        \
@@ -325,12 +329,13 @@ public:
 
 struct PlayerViewTileAccessor {
 private:
-  Board &board;
-  Tile &tile;
+  const Board &board;
+  const Tile &tile;
   Player player;
 
 public:
-  inline constexpr PlayerViewTileAccessor(Board &b, Tile &t, Player p)
+  inline constexpr PlayerViewTileAccessor(const Board &b, const Tile &t,
+                                          Player p)
       : board(b), tile(t), player(p) {}
 
   PLAYER_TILE_ATTR_ACCESSOR(army);
@@ -344,13 +349,10 @@ public:
 } // namespace
 
 struct PlayerView {
-private:
-  Game &game;
-
-public:
+  const Game &game;
   Player player;
 
-  inline constexpr PlayerView(Game &g, Player p) : game(g), player(p) {}
+  inline constexpr PlayerView(const Game &g, Player p) : game(g), player(p) {}
   inline constexpr PlayerViewTileAccessor operator[](coord::Pos pos) {
     return PlayerViewTileAccessor{game.board, game.board[pos], player};
   }
