@@ -5,6 +5,7 @@
 #include <concepts>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <mdspan>
 #include <optional>
 #include <type_traits>
@@ -263,9 +264,9 @@ struct Game {
   inline constexpr player::PlayerView player_view(Player player) const;
 
   inline void operator+=(Move move) { apply(move); }
-  inline Game operator+(Move move) {
+  inline Game operator+(Move move) const {
     auto copy = *this;
-    operator+=(move);
+    copy.operator+=(move);
     return copy;
   }
 };
@@ -311,7 +312,7 @@ public:
   inline constexpr operator Type() const {
     if (std::ranges::any_of(surround, [&](const auto &offset) {
           const auto pos = tile.pos + offset;
-          return pos.owner == player;
+          return board[pos].owner == player;
         }))
       return static_cast<Type>(tile.type.operator game::Type());
     else
@@ -338,6 +339,8 @@ public:
                                           Player p)
       : board(b), tile(t), player(p) {}
 
+  inline constexpr auto pos() const { return tile.pos; }
+
   PLAYER_TILE_ATTR_ACCESSOR(army);
   PLAYER_TILE_ATTR_ACCESSOR(owner);
   PLAYER_TILE_ATTR_ACCESSOR(type);
@@ -346,26 +349,81 @@ public:
 #undef PLAYER_TILE_ATTR_ACCESSOR
 #undef TILE_ATTR_T
 
-} // namespace
+struct PlayerViewIterator {
+  using iterator_category = std::forward_iterator_tag;
+  using value_type = PlayerViewTileAccessor;
+  using difference_type = std::ptrdiff_t;
 
-struct PlayerView {
-  const Game &game;
-  Player player;
+private:
+  const PlayerView *view;
+  std::size_t index;
 
-  inline constexpr PlayerView(const Game &g, Player p) : game(g), player(p) {}
-  inline constexpr PlayerViewTileAccessor operator[](coord::Pos pos) {
-    return PlayerViewTileAccessor{game.board, game.board[pos], player};
+public:
+  inline constexpr PlayerViewIterator() {
+    throw std::runtime_error(
+        "Default constructor of PlayerView::PlayerViewIterator should not be "
+        "used");
   }
-  inline constexpr PlayerViewTileAccessor operator[](coord::pos_t x,
-                                                     coord::pos_t y) {
-    return PlayerViewTileAccessor{game.board, game.board[x, y], player};
+  inline constexpr PlayerViewIterator(const PlayerView *view, std::size_t index)
+      : view(view), index(index) {}
+  inline constexpr PlayerViewIterator(const PlayerViewIterator &) = default;
+
+  inline constexpr PlayerViewIterator &
+  operator=(const PlayerViewIterator &) = default;
+
+  inline constexpr value_type operator*() const;
+  inline constexpr PlayerViewIterator &operator++() {
+    ++index;
+    return *this;
+  }
+
+  inline constexpr PlayerViewIterator operator++(int) {
+    PlayerViewIterator tmp = *this;
+    ++*this;
+    return tmp;
+  }
+
+  inline constexpr bool operator==(const PlayerViewIterator &other) const {
+    return index == other.index && view == other.view;
   }
 };
 
+static_assert(std::forward_iterator<PlayerViewIterator>);
+
+} // namespace
+
+struct PlayerView {
+  const Game *game;
+  Player player;
+
+  inline constexpr PlayerView(const Game *g, Player p) : game(g), player(p) {}
+  inline constexpr PlayerViewTileAccessor operator[](coord::Pos pos) const {
+    return PlayerViewTileAccessor{game->board, game->board[pos], player};
+  }
+  inline constexpr PlayerViewTileAccessor operator[](coord::pos_t x,
+                                                     coord::pos_t y) const {
+    return PlayerViewTileAccessor{game->board, game->board[x, y], player};
+  }
+
+  inline constexpr PlayerViewIterator begin() const { return {this, 0}; }
+  inline constexpr PlayerViewIterator end() const {
+    return {this, static_cast<std::size_t>(game->width) * game->height};
+  }
+};
+
+inline constexpr PlayerViewIterator::value_type
+PlayerViewIterator::operator*() const {
+  const auto w = view->game->width;
+  return (*view)[static_cast<coord::pos_t>(index % w),
+                 static_cast<coord::pos_t>(index / w)];
+}
+
 } // namespace player
 
-inline constexpr player::PlayerView Game::player_view(Player player) const {
-  return player::PlayerView{const_cast<Game &>(*this), player};
+using player::PlayerView;
+
+inline constexpr PlayerView Game::player_view(Player player) const {
+  return PlayerView{this, player};
 }
 
 } // namespace generals::game

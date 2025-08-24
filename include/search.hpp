@@ -11,7 +11,7 @@ namespace generals::search {
 struct Searcher : pro::facade_builder
   ::add_convention<
       pro::operator_dispatch<"()">,
-      game::Move(const game::player::PlayerView &) const
+      game::Move(const game::PlayerView &)
     >
   ::build {};
 // clang-format on

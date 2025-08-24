@@ -14,10 +14,23 @@ struct Evaluator : pro::facade_builder
   ::add_convention<
       // returns the possibility of winning, [0, 1]
       pro::operator_dispatch<"()">,
-      score_t(const game::player::PlayerView &) const
+      score_t(const game::PlayerView &)
+    >
+  ::add_convention<
+      pro::operator_dispatch<"()">,
+      score_t(const game::PlayerView &, game::Move)
     >
   ::build {};
 // clang-format on
+
+namespace hce {
+
+struct Evaluator {
+  score_t operator()(const game::PlayerView &);
+  score_t operator()(const game::PlayerView &, game::Move);
+};
+
+} // namespace hce
 
 } // namespace generals::eval
 
