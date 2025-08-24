@@ -15,13 +15,15 @@ namespace generals::search::heuristics {
 using namespace game;
 using Direction = Move::Direction;
 
-using TileAccessor =
-    decltype(std::declval<PlayerView>()[std::declval<coord::Pos>()]);
+using std::declval;
+namespace views = std::views;
+
+using TileAccessor = decltype(declval<PlayerView>()[declval<coord::Pos>()]);
 
 constexpr std::array<Direction, 4> directions = {
     {Direction::Up, Direction::Left, Direction::Down, Direction::Right}};
 auto get_moves(const TileAccessor &tile) {
-  return directions | std::views::transform([&](const auto &dir) {
+  return directions | views::transform([&](const auto &dir) {
            return Move{tile.owner.operator MaybePlayer().to_player().value(),
                        tile.pos(), dir};
          });
@@ -52,10 +54,10 @@ auto legal_moves(const PlayerView &view) {
 
   // clang-format off
   return view
-    | std::views::filter(player_is_owner)
-    | std::views::transform(get_moves)
-    | std::views::join
-    | std::views::filter(is_valid_move);
+    | views::filter(player_is_owner)
+    | views::transform(get_moves)
+    | views::join
+    | views::filter(is_valid_move);
   // clang-format on
 }
 
@@ -65,13 +67,13 @@ Move Searcher::operator()(const PlayerView &view) {
   using MovePair = std::pair<Move, eval::score_t>;
   // clang-format off
   auto moves = legal_moves(view)
-    | std::views::transform([&](const auto &move) {
+    | views::transform([&](const auto &move) {
         return std::make_pair(move, (*evaluator)(view, move));
       })
     | std::ranges::to<std::vector<MovePair>>();
   // clang-format on
   std::ranges::sort(moves, std::ranges::greater{}, &MovePair::second);
-  auto top_moves = moves | std::views::take(top_k);
+  auto top_moves = moves | views::take(top_k);
   std::println("top_moves.size(): {}", top_moves.size());
   std::random_device rd;
   std::mt19937 gen{rd()};

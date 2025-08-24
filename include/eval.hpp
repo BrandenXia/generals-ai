@@ -4,6 +4,7 @@
 #include <proxy/proxy.h>
 
 #include "game.hpp"
+#include "proxy/v4/proxy.h"
 
 namespace generals::eval {
 
