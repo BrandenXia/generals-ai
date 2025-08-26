@@ -312,6 +312,10 @@ public:
   inline constexpr operator Type() const {
     if (std::ranges::any_of(surround, [&](const auto &offset) {
           const auto pos = tile.pos + offset;
+          if (!pos.valid(static_cast<coord::pos_t>(board.extent(0)),
+                         static_cast<coord::pos_t>(board.extent(1))))
+            return false;
+
           return board[pos].owner == player;
         }))
       return static_cast<Type>(tile.type.operator game::Type());

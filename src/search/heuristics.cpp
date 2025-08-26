@@ -23,9 +23,10 @@ using TileAccessor = decltype(declval<PlayerView>()[declval<coord::Pos>()]);
 constexpr std::array<Direction, 4> directions = {
     {Direction::Up, Direction::Left, Direction::Down, Direction::Right}};
 auto get_moves(const TileAccessor &tile) {
-  return directions | views::transform([&](const auto &dir) {
-           return Move{tile.owner.operator MaybePlayer().to_player().value(),
-                       tile.pos(), dir};
+  auto player = tile.owner.operator MaybePlayer().to_player().value();
+  auto pos = tile.pos();
+  return directions | views::transform([=](const auto &dir) {
+           return Move{player, pos, dir};
          });
 }
 
@@ -37,7 +38,7 @@ auto legal_moves(const PlayerView &view) {
   const auto player = view.player;
   std::println("player.id: {}", player.id);
 
-  const auto player_is_owner = [&player](const auto &tile) {
+  const auto player_is_owner = [player](const auto &tile) {
     std::println("player.id in lambda: {}, owner: {}", player.id,
                  tile.owner.operator MaybePlayer().id);
     return tile.owner.operator MaybePlayer() == player;
