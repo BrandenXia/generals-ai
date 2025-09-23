@@ -24,7 +24,7 @@ Game::Game(std::uint8_t w, std::uint8_t h, std::uint8_t player_count)
   for (unsigned int i = 0; i < map_size; ++i)
     tiles.emplace_back(Tile{
         Type::Blank,
-        {static_cast<std::uint8_t>(i % w), static_cast<std::uint8_t>(i / w)}});
+        {static_cast<std::uint8_t>(i / w), static_cast<std::uint8_t>(i % w)}});
 
   std::random_device rd;
   std::mt19937 gen{rd()};
@@ -71,6 +71,46 @@ Game::Game(std::uint8_t w, std::uint8_t h, std::uint8_t player_count)
   });
 
   board = {tiles.data(), w, h};
+}
+
+Game::Game(const Game &other)
+    : tick(other.tick), player_count(other.player_count),
+      alive_count(other.alive_count), width(other.width), height(other.height),
+      tiles(other.tiles), players(other.players),
+      board{tiles.data(), width, height} {}
+
+Game::Game(Game &&other) noexcept
+    : tick(other.tick), player_count(other.player_count),
+      alive_count(other.alive_count), width(other.width), height(other.height),
+      tiles(std::move(other.tiles)), players(std::move(other.players)),
+      board{tiles.data(), width, height} {}
+
+Game &Game::operator=(const Game &other) {
+  if (this != &other) {
+    tick = other.tick;
+    player_count = other.player_count;
+    alive_count = other.alive_count;
+    width = other.width;
+    height = other.height;
+    tiles = other.tiles;
+    players = other.players;
+    board = {tiles.data(), width, height};
+  }
+  return *this;
+}
+
+Game &Game::operator=(Game &&other) noexcept {
+  if (this != &other) {
+    tick = other.tick;
+    player_count = other.player_count;
+    alive_count = other.alive_count;
+    width = other.width;
+    height = other.height;
+    tiles = std::move(other.tiles);
+    players = std::move(other.players);
+    board = {tiles.data(), width, height};
+  }
+  return *this;
 }
 
 inline constexpr std::array<coord::Offset, 4> directions = {

@@ -12,6 +12,13 @@
 #include <utility>
 #include <vector>
 
+#include <spdlog/fmt/fmt.h>
+
+#define FMT_CUSTOM_FORMATTER_DECL(type)                                        \
+  inline constexpr auto format_as(const type &v)
+#define FMT_CUSTOM_FORMATTER(type, str, ...)                                   \
+  FMT_CUSTOM_FORMATTER_DECL(type) { return fmt::format(str, __VA_ARGS__); }
+
 namespace generals::game {
 
 namespace coord {
@@ -44,6 +51,8 @@ struct Offset {
   }
 };
 
+FMT_CUSTOM_FORMATTER(Offset, "Offset({},{})", v.x, v.y);
+
 using pos_t = std::uint8_t;
 
 struct Pos {
@@ -60,6 +69,8 @@ struct Pos {
   }
 };
 
+FMT_CUSTOM_FORMATTER(Pos, "Pos({},{})", v.x, v.y);
+
 } // namespace coord
 
 enum class Type : std::uint8_t { Blank, Mountain, City, General };
@@ -74,6 +85,8 @@ struct Player {
   inline constexpr bool operator==(const Player &p) const { return id == p.id; }
 };
 
+FMT_CUSTOM_FORMATTER(Player, "Player({})", v.id)
+
 struct MaybePlayer {
   std::uint8_t id;
 
@@ -86,6 +99,13 @@ struct MaybePlayer {
     return id == p.id;
   }
 };
+
+FMT_CUSTOM_FORMATTER_DECL(MaybePlayer) {
+  if (v.has_player())
+    return fmt::format("MaybePlayer {{ id = {} }}", v.id);
+  else
+    return fmt::format("MaybePlayer {{ None }}");
+}
 
 inline constexpr Player::operator MaybePlayer() const { return {id}; }
 
@@ -131,7 +151,7 @@ public:
 #define INTEGRAL_OP(op)                                                        \
   template <std::integral I>                                                   \
     requires std::is_integral_v<T>                                             \
-  inline constexpr void operator op##=(I i) const {                            \
+  inline constexpr void operator op## = (I i) const {                          \
     operator=(static_cast<T>(operator T() op i));                              \
   }
   INTEGRAL_OP(+)
@@ -224,6 +244,14 @@ struct Move {
   enum class Direction : std::uint8_t { Up, Left, Down, Right } direction : 2;
 };
 
+constexpr std::array<const char *, 4> direction_str = {"Up", "Left", "Down",
+                                                       "Right"};
+FMT_CUSTOM_FORMATTER(Move::Direction, "{}",
+                     direction_str[static_cast<std::size_t>(v)])
+
+FMT_CUSTOM_FORMATTER(Move, "Move {{ {}, from={}, direction={} }}", v.player,
+                     v.from, v.direction)
+
 namespace player {
 
 struct PlayerView;
@@ -237,11 +265,17 @@ struct Game {
   std::uint8_t alive_count = player_count;
   std::uint8_t width, height;
 
-  Board board;
   std::vector<Tile> tiles;
   std::vector<PlayerInfo> players;
 
+  Board board;
+
   Game(std::uint8_t width, std::uint8_t height, std::uint8_t player_count = 2);
+
+  Game(const Game &);
+  Game(Game &&) noexcept;
+  Game &operator=(const Game &);
+  Game &operator=(Game &&) noexcept;
 
   void apply(Move move);
   void next_tick();

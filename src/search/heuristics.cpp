@@ -1,11 +1,11 @@
 #include "search/heuristics.hpp"
 
 #include <array>
-#include <print>
-#include <random>
 #include <ranges>
 #include <utility>
 #include <vector>
+
+#include <spdlog/spdlog.h>
 
 #include "eval.hpp"
 #include "game.hpp"
@@ -36,11 +36,8 @@ auto legal_moves(const PlayerView &view) {
   using coord::pos_t;
 
   const auto player = view.player;
-  std::println("player.id: {}", player.id);
 
   const auto player_is_owner = [player](const auto &tile) {
-    std::println("player.id in lambda: {}, owner: {}", player.id,
-                 tile.owner.operator MaybePlayer().id);
     return tile.owner.operator MaybePlayer() == player;
   };
   const auto is_valid_move = [&view](const Move move) {
@@ -75,12 +72,7 @@ Move Searcher::operator()(const PlayerView &view) {
   // clang-format on
   std::ranges::sort(moves, std::ranges::greater{}, &MovePair::second);
   auto top_moves = moves | views::take(top_k);
-  std::println("top_moves.size(): {}", top_moves.size());
-  std::random_device rd;
-  std::mt19937 gen{rd()};
-  std::uniform_int_distribution<> dist{
-      0, std::min<int>(top_k, static_cast<int>(moves.size())) - 1};
-  return top_moves[dist(gen)].first;
+  return top_moves[0].first;
 }
 
 } // namespace generals::search::heuristics

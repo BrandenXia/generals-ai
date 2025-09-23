@@ -1,7 +1,9 @@
 #include "interaction.hpp"
 
 #include <optional>
+
 #include <raylib.h>
+#include <spdlog/spdlog.h>
 
 #include "ui.hpp"
 
@@ -37,6 +39,7 @@ void interaction(Game &game, game::Player player,
     }
     if (direction.has_value()) {
       game::Move move{player, coord, *direction};
+      spdlog::debug("Player: {}", move);
       game += move;
       game.next_tick();
       interact();

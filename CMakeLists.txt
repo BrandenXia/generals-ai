@@ -31,3 +31,8 @@ if (APPLE)
   target_link_libraries(generals_ai PRIVATE "-framework Cocoa")
   target_link_libraries(generals_ai PRIVATE "-framework OpenGL")
 endif()
+
+# spdlog
+find_package(spdlog REQUIRED)
+include_directories(${SPDLOG_INCLUDE_DIR})
+target_link_libraries(generals_ai PRIVATE spdlog::spdlog)

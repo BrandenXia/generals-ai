@@ -1,5 +1,7 @@
 #include "eval.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include "game.hpp"
 
 namespace generals::eval::hce {
@@ -13,17 +15,21 @@ score_t Evaluator::operator()(const game::PlayerView &view) {
 
   auto w = view.game->width, h = view.game->height;
 
-  const double player_tile_count =
-      static_cast<double>(std::ranges::count_if(view, has_player_owner));
+  auto player_tile_count = std::ranges::count_if(view, has_player_owner);
 
-  return player_tile_count / (w * h);
+  return static_cast<double>(player_tile_count) / (w * h);
 }
 
 score_t Evaluator::operator()(const game::PlayerView &view, game::Move move) {
   auto game_copy = *view.game + move;
-  game::PlayerView new_view = game_copy.player_view(view.player);
+  auto new_view = game_copy.player_view(view.player);
 
-  return (*this)(new_view) - (*this)(view);
+  auto score = (*this)(view);
+  auto new_score = (*this)(new_view);
+
+  spdlog::trace("Evaluating move: {}, score: {} -> {}", move, score, new_score);
+
+  return new_score - score;
 }
 
 } // namespace generals::eval::hce
