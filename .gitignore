@@ -4,7 +4,7 @@
 # debug
 .cache
 
-# filesytem
+# filesystem
 .DS_Store
 
 # logs
